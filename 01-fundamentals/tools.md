@@ -1,475 +1,384 @@
 # 01 — Fundamentals: Tools & Real Usage
 
-> These are the tools you'll use in every engagement. Learn them deeply — not just the commands, but what each flag does and when to use it.
+> Tools are extensions of your skill, not replacements. Learn what each tool does manually first, then automate.
+
+> 📋 **What You Will Do In This Section**
+> - [ ] Install and configure Burp Suite for intercepting traffic
+> - [ ] Use curl to craft and send custom HTTP requests
+> - [ ] Run Nmap to scan Juice Shop and interpret the results
+> - [ ] Use ffuf to discover hidden directories and files
+> - [ ] Use Developer Tools (F12) to inspect client-side security
 
 ---
 
-## 🔴 Burp Suite (The Swiss Army Knife)
+## 🔴 Burp Suite (Your Primary Weapon)
 
-### Setup & Configuration
+> 💡 **Why This Matters**
+> Burp Suite sits between your browser and the target, letting you see, modify, and replay every request. 90% of web pentesting happens in Burp. It's the single most important tool you'll use.
 
-```
-# Download: https://portswigger.net/burp/communitydownload
-# Run:
-java -jar burpsuite_community.jar
+### Installation
+```bash
+# Download from https://portswigger.net/burp/communitydownload
+# Linux:
+chmod +x burpsuite_community_linux*.sh
+./burpsuite_community_linux*.sh
 
-# Proxy Listener: 127.0.0.1:8080
-# Browser Proxy: Configure Firefox/Chrome to use 127.0.0.1:8080
-# CA Certificate: Navigate to http://burpsuite → Download → Import into browser
-```
-
-### Essential Tabs
-
-| Tab | Purpose | When To Use |
-|-----|---------|-------------|
-| Proxy | Intercept/modify requests in real-time | Login testing, parameter tampering |
-| Repeater | Send modified requests manually | Testing payloads, fuzzing individual params |
-| Intruder | Automated payload delivery | Brute force, parameter fuzzing, SQLi |
-| Decoder | Encode/decode data | Base64, URL encoding, hex |
-| Comparer | Diff two responses | Comparing valid vs invalid responses |
-| Target | Site map and scope | Attack surface mapping |
-
-### Proxy Usage
-
-```
-# Intercept a request and modify it
-1. Proxy → Intercept → Intercept is ON
-2. Perform action in browser
-3. Request appears in Burp
-4. Modify any field → Forward
-5. Check response in HTTP History
-
-# Intercept responses (often missed):
-Proxy → Options → Intercept Server Responses → Check "Intercept responses based on..."
+# Verify it runs:
+burpsuite &
 ```
 
-### Repeater Workflows
+> ✅ **Expected Output**
+> Burp Suite splash screen appears → Click "Next" → "Start Burp" → You see the Dashboard tab.
+
+> 🔧 **If Stuck**
+> - `burpsuite: command not found` → Run the installer binary directly: `./BurpSuiteCommunity`
+> - Java errors → Install Java: `sudo apt install default-jre -y`
+> - UI is tiny on HiDPI → Right-click Burp icon → Properties → Add `-Dsun.java2d.uiScale=2.0` to Java args
+
+### Core Workflows
+
+#### Workflow 1: Passive Traffic Recording
 
 ```
-# Testing SQL Injection manually
-1. Capture request in Proxy
-2. Right-click → Send to Repeater
-3. Modify parameter: username=admin'
-4. Click Send → Check response
-5. Modify parameter: username=admin' OR 1=1-- -
-6. Click Send → Compare responses
-7. Use Ctrl+R to send same request repeatedly
+1. Start Burp → Proxy → Intercept is OFF
+2. Configure browser proxy to 127.0.0.1:8080
+3. Browse the target application normally
+4. All traffic appears in Proxy → HTTP History
+5. Review: Filter by domain, method, status code, response length
 ```
 
-### Intruder Attack Types
+> ✅ **Expected Output**
+> After browsing Juice Shop for 5 minutes, you should see 50-100+ requests in HTTP History. Sort by URL to find API endpoints, filter by status to find errors.
+
+#### Workflow 2: Intercepting and Modifying Requests
 
 ```
-# Sniper: One payload position, one wordlist
-# Use for: Testing one parameter at a time
-Positions: username=§admin§&password=test
-Payload: wordlist of usernames
-
-# Battering Ram: Same payload in all positions
-# Use for: When the same value goes in multiple places
-Positions: user=§test§&confirm=§test§
-
-# Pitchfork: Multiple positions, multiple lists (parallel)
-# Use for: Credential stuffing (user1:pass1, user2:pass2)
-Positions: username=§admin§&password=§password§
-Payload 1: usernames.txt
-Payload 2: passwords.txt
-
-# Cluster Bomb: All combinations of all lists
-# Use for: Brute force (try every password for every user)
-# ⚠️ Very slow with large lists
-Positions: username=§admin§&password=§password§
+1. Proxy → Intercept → Turn ON
+2. In browser, perform an action (login, search, submit form)
+3. Burp catches the request before it leaves your machine
+4. Modify any part (URL, headers, body)
+5. Click "Forward" to send the modified request
+6. Check HTTP History for the response
 ```
 
-### Burp Extensions To Install
+#### 🧪 Try It Now — Modify a Juice Shop Search
 
 ```
-# Extensions → BApp Store → Install:
-
-1. Param Miner          → Discovers hidden parameters
-2. Autorize             → IDOR testing automation
-3. JWT Editor           → Decode, modify, and forge JWTs
-4. Hackvertor           → Advanced encoding/decoding
-5. Logger++             → Enhanced HTTP logging
-6. Active Scan++        → Better vulnerability detection
-7. Retire.js            → Detect vulnerable JavaScript libraries
-8. Upload Scanner       → File upload vulnerability testing
+1. Turn Intercept ON in Burp
+2. In Juice Shop, search for "apple"
+3. In Burp, you'll see: GET /rest/products/search?q=apple
+4. Change "apple" to: ' OR 1=1--
+5. Click Forward
+6. In browser, you should see ALL products (SQL injection worked!)
 ```
+
+> ✅ **Expected Output**
+> The search page shows ALL products instead of just apple products — the `' OR 1=1--` payload made the SQL query return everything.
+
+> 🔧 **If Stuck**
+> - Nothing appears in intercept → Make sure your browser is configured to use Burp's proxy (127.0.0.1:8080)
+> - Intercepting too many requests (images, CSS) → Right-click in HTTP History → "Add to scope". Then Options → "And URL is in target scope" to only intercept relevant requests
+
+#### Workflow 3: Repeater (Manual Testing)
+
+```
+1. Find a request in HTTP History
+2. Right-click → "Send to Repeater" (Ctrl+R)
+3. In Repeater tab: modify the request
+4. Click "Send" → see the response immediately
+5. Modify again, Send again — rapid testing loop
+```
+
+#### Workflow 4: Intruder (Automated Parameter Testing)
+
+```
+1. Send a request to Intruder (Ctrl+I)
+2. Positions tab: Highlight the value you want to fuzz → Click "Add §"
+3. Payloads tab: Load a wordlist or list of test values
+4. Click "Start Attack"
+5. Sort results by Status Code or Response Length to find anomalies
+
+Example: Fuzz user IDs for IDOR
+Position: GET /api/Users/§1§
+Payload: Numbers 1-100
+→ Sort by response length — different sizes = different users' data
+```
+
+> ✅ **Expected Output (IDOR Fuzzing)**
+> ```
+> Payload | Status | Length
+> 1       | 200    | 523     ← Admin user
+> 2       | 200    | 487     ← Regular user
+> 3       | 200    | 502     ← Another user
+> ...
+> 99      | 404    | 31      ← User doesn't exist
+> ```
+> Different response lengths at `200` status = different user profiles being returned. Each one is an IDOR find.
 
 ---
 
-## 🔴 cURL (Command-Line HTTP Client)
+## 🔴 curl (Command-Line HTTP Client)
+
+> 💡 **Why This Matters**
+> curl is available on virtually every system. When Burp isn't available (SSH into a server, scripting, CI/CD testing), curl is your go-to. It's also faster for quick checks.
 
 ### Essential Flags
 
 ```bash
-# Basic GET request
-curl https://target.com
+# GET request with verbose output (shows request AND response headers)
+curl -v http://localhost:3000
 
-# Include response headers
-curl -i https://target.com
+# POST request with JSON body
+curl -X POST http://localhost:3000/rest/user/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@test.com","password":"test"}'
 
-# Only show headers
-curl -I https://target.com
+# Only response headers (HEAD request)
+curl -sI http://localhost:3000
 
 # Follow redirects
-curl -L https://target.com
-
-# POST request with JSON data
-curl -X POST https://target.com/api/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"test"}'
-
-# POST with form data
-curl -X POST https://target.com/login \
-  -d "username=admin&password=test"
+curl -L http://localhost:3000/some-redirect
 
 # Custom headers
 curl -H "Authorization: Bearer TOKEN" \
-  -H "X-Forwarded-For: 127.0.0.1" \
-  https://target.com/api/admin
+     -H "X-Forwarded-For: 127.0.0.1" \
+     http://localhost:3000/api/Users/
 
-# Send cookies
-curl -b "session=abc123; admin=true" https://target.com/dashboard
-
-# Save cookies to file, then reuse
-curl -c cookies.txt https://target.com/login
-curl -b cookies.txt https://target.com/dashboard
-
-# Upload a file
-curl -F "file=@payload.php" https://target.com/upload
-
-# Ignore SSL errors (self-signed certs)
-curl -k https://target.com
-
-# Verbose output (shows TLS handshake, headers)
-curl -v https://target.com
+# Save response to file
+curl -o response.html http://localhost:3000
 
 # Show only HTTP status code
-curl -s -o /dev/null -w "%{http_code}" https://target.com
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
 
-# Time the request
-curl -s -o /dev/null -w "DNS: %{time_namelookup}s\nConnect: %{time_connect}s\nTLS: %{time_appconnect}s\nTotal: %{time_total}s\n" https://target.com
+# Include cookies
+curl -b "session=abc123; role=admin" http://localhost:3000
 
-# Through a proxy (Burp)
-curl -x http://127.0.0.1:8080 https://target.com
+# POST with form data
+curl -X POST -d "username=admin&password=test" http://localhost/login.php
+
+# Upload a file
+curl -X POST -F "file=@shell.php" http://target.com/upload
+
+# Silent mode with JSON pretty-print
+curl -s http://localhost:3000/api/Products/ | python3 -m json.tool
 ```
 
-### cURL For Pentesters
+#### 🧪 Try It Now — Juice Shop API Exploration with curl
 
 ```bash
-# Test for CORS misconfiguration
-curl -H "Origin: https://evil.com" -I https://target.com/api/data 2>/dev/null | grep -i "access-control"
+# 1. Get all products
+curl -s http://localhost:3000/api/Products/ | python3 -m json.tool | head -30
 
-# Check for HTTP methods allowed
-curl -X OPTIONS -I https://target.com/api/resource
+# 2. Get a specific product
+curl -s http://localhost:3000/api/Products/1 | python3 -m json.tool
 
-# Test for path traversal
-curl https://target.com/download?file=../../../../etc/passwd
-
-# Test for SSRF
-curl https://target.com/fetch?url=http://169.254.169.254/latest/meta-data/
-
-# User-Agent SQL injection
-curl -H "User-Agent: ' OR 1=1-- -" https://target.com
-
-# Test for verb tampering
-for method in GET POST PUT DELETE PATCH OPTIONS HEAD; do
-  echo -n "$method: "
-  curl -s -o /dev/null -w "%{http_code}" -X $method https://target.com/admin
-  echo
-done
-
-# Brute force with curl (basic)
-while read pass; do
-  code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-    -d "username=admin&password=$pass" https://target.com/login)
-  echo "$pass: $code"
-done < /usr/share/wordlists/rockyou.txt
+# 3. Check what HTTP methods are allowed
+curl -s -X OPTIONS http://localhost:3000/api/Products/ -I | grep -i "allow"
 ```
+
+> ✅ **Expected Output**
+> ```json
+> // Products list will show items like:
+> {
+>     "id": 1,
+>     "name": "Apple Juice (1000ml)",
+>     "description": "The all-time classic.",
+>     "price": 1.99,
+>     ...
+> }
+> ```
 
 ---
 
-## 🔴 Developer Tools (Browser)
+## 🔴 Nmap (Network Scanner)
 
-### Network Tab
+> 💡 **Why This Matters**
+> Nmap tells you WHAT is running on the target — open ports, services, versions. You can't attack a service you don't know exists. Port scanning is always step 1 of any network-level engagement.
 
-```
-# Open: F12 → Network tab
-# Filter: XHR (to see API calls only)
-# Check: "Preserve log" (to keep history across page loads)
+```bash
+# Quick scan — top 1000 ports
+nmap localhost
 
-# For each request, examine:
-# - Headers tab: All request and response headers
-# - Payload tab: POST body data
-# - Response tab: Raw response body
-# - Timing tab: How long each phase took
-# - Cookies tab: Cookies sent and received
-```
+# Full port scan (all 65535 ports) — slower but thorough
+nmap -p- localhost
 
-### Console Tab
+# Version detection (what software is running on each port)
+nmap -sV localhost
 
-```javascript
-// Check for exposed JavaScript variables
-window.__NEXT_DATA__          // Next.js — may contain API keys, user data
-window.__NUXT__               // Nuxt.js — server-side data
-window.__REDUX_STATE__        // Redux state — full application state
+# Aggressive scan (version + OS + scripts + traceroute)
+nmap -A localhost
 
-// Read all cookies
-document.cookie
+# Scan specific ports
+nmap -p 80,443,3000,8080 localhost
 
-// Read localStorage
-JSON.stringify(localStorage)
+# Scan with default scripts (safe vulnerability checks)
+nmap -sC -sV localhost
 
-// Read sessionStorage
-JSON.stringify(sessionStorage)
-
-// Find all forms and their actions
-document.querySelectorAll('form').forEach(f => console.log(f.action, f.method))
-
-// Find all links
-document.querySelectorAll('a').forEach(a => console.log(a.href))
-
-// Find all input fields (including hidden)
-document.querySelectorAll('input').forEach(i => console.log(i.name, i.type, i.value))
-
-// Find all JavaScript files loaded
-performance.getEntriesByType('resource')
-  .filter(r => r.name.endsWith('.js'))
-  .forEach(r => console.log(r.name))
-
-// Detect JavaScript frameworks
-typeof React !== 'undefined'   // React
-typeof angular !== 'undefined' // Angular
-typeof Vue !== 'undefined'     // Vue
-typeof jQuery !== 'undefined'  // jQuery
+# Output to all formats (normal, XML, grepable)
+nmap -sV -oA juice_shop_scan localhost
 ```
 
-### Sources Tab
+#### 🧪 Try It Now — Scan Juice Shop
 
+```bash
+# Scan Juice Shop's port
+nmap -sV -p 3000 localhost
 ```
-# Look for:
-# - Source maps (.map files) → Full original source code
-# - Inline scripts with API keys or secrets
-# - WebSocket connections
-# - Service Worker files
 
-# Search across all sources: Ctrl+Shift+F
-# Search for: "api_key", "secret", "password", "token", "admin"
-```
+> ✅ **Expected Output**
+> ```
+> Starting Nmap 7.92 ( https://nmap.org )
+> Nmap scan report for localhost (127.0.0.1)
+> PORT     STATE SERVICE VERSION
+> 3000/tcp open  http    Node.js Express framework
+>
+> Service detection performed.
+> ```
+> **What this tells you:** Port 3000 is open, running HTTP, powered by Node.js Express. This confirms our earlier response header analysis.
+
+> 🔧 **If Stuck**
+> - `nmap: command not found` → Install: `sudo apt install nmap -y`
+> - All ports show as "filtered" → You might be scanning through a firewall. For local Docker targets, scan `127.0.0.1` or `localhost`
+> - Scan is very slow → For local targets, add `-T4` for faster timing: `nmap -T4 -sV localhost`
 
 ---
 
-## 🔴 HTTPie (Better cURL for APIs)
+## 🔴 ffuf (Fast Web Fuzzer)
+
+> 💡 **Why This Matters**
+> Web applications hide pages, API endpoints, backup files, and admin panels that aren't linked anywhere. ffuf finds them by brute-forcing paths with wordlists. This is how you discover attack surface that the developers thought was secret.
 
 ```bash
 # Install
-pip3 install httpie
+sudo apt install ffuf -y
+# Or: go install github.com/ffuf/ffuf/v2@latest
 
-# GET request (colored, formatted output)
-http https://target.com/api/users
+# Basic directory discovery
+ffuf -u http://localhost:3000/FUZZ \
+  -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+  -mc 200,301,302,403
 
-# POST with JSON (default)
-http POST https://target.com/api/login username=admin password=test
+# With specific extensions
+ffuf -u http://localhost:3000/FUZZ \
+  -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+  -e .js,.json,.xml,.bak,.old,.php \
+  -mc 200,301,302,403
 
-# Custom headers
-http https://target.com/api/data "Authorization: Bearer TOKEN"
+# Filter out responses by size (remove noise)
+ffuf -u http://localhost:3000/FUZZ \
+  -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+  -mc 200,301 \
+  -fs 0
 
-# Form data
-http -f POST https://target.com/login username=admin password=test
+# Speed control (threads and delay)
+ffuf -u http://localhost:3000/FUZZ \
+  -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+  -t 50 -rate 100
 
-# File upload
-http -f POST https://target.com/upload file@payload.php
-
-# Download response body
-http https://target.com/api/data > response.json
-
-# Through proxy
-http --proxy=http:http://127.0.0.1:8080 https://target.com
+# Parameter fuzzing
+ffuf -u "http://localhost:3000/rest/products/search?FUZZ=test" \
+  -w /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt \
+  -mc 200 -fs 0
 ```
 
----
-
-## 🔴 Python `requests` Library
-
-```python
-import requests
-
-# Disable SSL warnings for self-signed certs
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# Basic GET
-r = requests.get('https://target.com', verify=False)
-print(r.status_code, r.headers, r.text)
-
-# POST with JSON
-r = requests.post('https://target.com/api/login',
-    json={'username': 'admin', 'password': 'test'},
-    verify=False)
-
-# Session management (maintains cookies across requests)
-s = requests.Session()
-s.post('https://target.com/login',
-    data={'username': 'admin', 'password': 'password'})
-# Now authenticated for subsequent requests:
-r = s.get('https://target.com/dashboard')
-
-# Custom headers
-r = requests.get('https://target.com/api/admin',
-    headers={
-        'Authorization': 'Bearer TOKEN',
-        'X-Forwarded-For': '127.0.0.1'
-    })
-
-# Through Burp proxy
-proxies = {'http': 'http://127.0.0.1:8080', 'https': 'http://127.0.0.1:8080'}
-r = requests.get('https://target.com', proxies=proxies, verify=False)
-
-# File upload
-files = {'file': ('shell.php', open('shell.php', 'rb'), 'image/jpeg')}
-r = requests.post('https://target.com/upload', files=files)
-
-# Iterate over IDs (IDOR testing)
-for i in range(1, 100):
-    r = requests.get(f'https://target.com/api/users/{i}',
-        headers={'Authorization': 'Bearer USER_TOKEN'})
-    if r.status_code == 200:
-        print(f"[+] User {i}: {r.json()}")
-```
-
----
-
-## 🔴 Wget (Recursive Downloads)
+#### 🧪 Try It Now — Fuzz Juice Shop
 
 ```bash
-# Mirror a website
-wget --mirror --convert-links --adjust-extension --page-requisites \
-  --no-parent https://target.com -P ./mirror/
-
-# Download specific file types
-wget -r -A "*.pdf,*.doc,*.xls,*.bak,*.sql" https://target.com
-
-# Ignore robots.txt
-wget -e robots=off -r https://target.com
-
-# Through proxy
-wget -e use_proxy=yes -e http_proxy=127.0.0.1:8080 https://target.com
+# Discover hidden paths on Juice Shop
+ffuf -u http://localhost:3000/FUZZ \
+  -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+  -mc 200,301,302 -t 20 2>/dev/null | head -30
 ```
+
+> ✅ **Expected Output**
+> ```
+> assets                  [Status: 301, Size: 179, Words: 7]
+> ftp                     [Status: 200, Size: 11070, Words: 466]
+> profile                 [Status: 200, Size: 6788, Words: 392]
+> robots.txt              [Status: 200, Size: 28, Words: 3]
+> ...
+> ```
+> **Key discoveries:**
+> - `/ftp` → An FTP directory listing! May contain sensitive files.
+> - `/robots.txt` → Lists paths the site doesn't want search engines to index — often sensitive paths.
+> - `/profile` → User profile page (check for IDOR).
+
+> 🔧 **If Stuck**
+> - `ffuf: command not found` → Install: `sudo apt install ffuf -y` or download from https://github.com/ffuf/ffuf/releases
+> - `SecLists not found` → Install: `sudo apt install seclists -y` or `git clone https://github.com/danielmiessler/SecLists.git /usr/share/seclists`
+> - Too many results → Add `-fs SIZE` to filter out common response sizes (e.g., `-fs 6788` to hide the default page)
 
 ---
 
-## 🔴 OpenSSL (TLS/SSL Testing)
+## 🔴 Developer Tools (Browser F12)
 
-```bash
-# Connect to a server and show the TLS handshake
-openssl s_client -connect target.com:443
+> 💡 **Why This Matters**
+> The browser's Developer Tools reveal client-side code, JavaScript logic, API calls, stored data, and session tokens. Many vulnerabilities are found entirely within the browser — no additional tools needed.
 
-# Show certificate details
-openssl s_client -connect target.com:443 </dev/null 2>/dev/null | openssl x509 -noout -text
+### Key Tabs
 
-# Show certificate expiry
-openssl s_client -connect target.com:443 </dev/null 2>/dev/null | openssl x509 -noout -dates
-
-# Show certificate chain
-openssl s_client -connect target.com:443 -showcerts
-
-# Test specific TLS version
-openssl s_client -connect target.com:443 -tls1_2
-openssl s_client -connect target.com:443 -tls1_1  # Should fail if old TLS disabled
-
-# Check for specific cipher
-openssl s_client -connect target.com:443 -cipher 'RC4'  # Should fail
-
-# Comprehensive TLS scan
-testssl.sh target.com
-# Install: git clone https://github.com/drwetter/testssl.sh.git
 ```
+Console      → Execute JavaScript, test for DOM XSS
+Network      → Watch live HTTP requests/responses (alternative to Burp for quick checks)
+Application  → View cookies, localStorage, sessionStorage, service workers
+Elements     → Inspect/modify HTML in real-time
+Sources      → Read JavaScript source code, set breakpoints
+```
+
+#### 🧪 Try It Now — Explore Juice Shop in DevTools
+
+```
+1. Open Juice Shop in browser (http://localhost:3000)
+2. Press F12 to open Developer Tools
+3. Console tab → Type: document.cookie
+   → See what cookies are accessible to JavaScript
+
+4. Application tab → Cookies → http://localhost:3000
+   → See all cookies with their flags (HttpOnly? Secure? SameSite?)
+
+5. Application tab → Local Storage → http://localhost:3000
+   → Look for the JWT token stored here after login
+
+6. Network tab → Search for something in Juice Shop
+   → Watch the API call appear in real-time
+   → Click on it to see request/response details
+```
+
+> ✅ **Expected Output**
+> ```javascript
+> // Console → document.cookie
+> "language=en; cookieconsent_status=dismiss; token=eyJ..."
+> // If the token is accessible via document.cookie, and there's an XSS,
+> // an attacker could steal it!
+>
+> // Local Storage will show:
+> // token: "eyJhbGciOiJSUzI1NiI..." (the JWT)
+> // This means JavaScript has access to the auth token
+> ```
 
 ---
 
-## 🔴 HashID & Hash Cracking
+## 📋 Tool Cheatsheet
 
-```bash
-# Identify hash type
-hashid 'e10adc3949ba59abbe56e057f20f883e'
-# or
-hash-identifier
-
-# Common hashes you'll find:
-# MD5:    32 hex chars          e10adc3949ba59abbe56e057f20f883e
-# SHA1:   40 hex chars          7c4a8d09ca3762af61e59520943dc26494f8941b
-# SHA256: 64 hex chars          8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92
-# bcrypt: $2a$10$...            $2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
-
-# Crack with hashcat
-# MD5
-hashcat -m 0 hash.txt /usr/share/wordlists/rockyou.txt
-# SHA1
-hashcat -m 100 hash.txt /usr/share/wordlists/rockyou.txt
-# SHA256
-hashcat -m 1400 hash.txt /usr/share/wordlists/rockyou.txt
-# bcrypt
-hashcat -m 3200 hash.txt /usr/share/wordlists/rockyou.txt
-
-# Crack with John the Ripper
-john --format=raw-md5 --wordlist=/usr/share/wordlists/rockyou.txt hash.txt
-john --show hash.txt  # Show cracked passwords
-```
+| Task | Tool | Quick Command |
+|------|------|---------------|
+| Intercept/modify requests | Burp Suite | Proxy → Intercept ON |
+| Quick HTTP request | curl | `curl -v URL` |
+| Port scanning | Nmap | `nmap -sV -p- target` |
+| Directory discovery | ffuf | `ffuf -u URL/FUZZ -w wordlist` |
+| Technology detection | whatweb | `whatweb URL` |
+| Response headers | curl | `curl -sI URL` |
+| Cookie/token inspection | Browser DevTools | F12 → Application → Cookies |
+| JavaScript analysis | Browser DevTools | F12 → Sources |
+| API exploration | curl | `curl -s URL/api/ \| jq` |
 
 ---
 
-## 📋 Tool Installation Checklist
+## 🧠 If You're Stuck With Tools
 
-```bash
-# Essential tools
-sudo apt update && sudo apt install -y \
-  nmap \
-  nikto \
-  sqlmap \
-  gobuster \
-  dirb \
-  wfuzz \
-  whatweb \
-  curl \
-  wget \
-  openssl \
-  netcat-openbsd \
-  python3-pip \
-  git \
-  jq
-
-# Python tools
-pip3 install \
-  requests \
-  httpie \
-  beautifulsoup4 \
-  pwntools \
-  jwt_tool
-
-# From GitHub
-git clone https://github.com/ticarpi/jwt_tool.git
-git clone https://github.com/drwetter/testssl.sh.git
-git clone https://github.com/danielmiessler/SecLists.git
-
-# Burp Suite
-# Download from https://portswigger.net/burp/communitydownload
-
-# Wordlists
-sudo apt install -y seclists
-# Default location: /usr/share/seclists/
-```
-
----
-
-## 🧠 Attacker Thinking: Tool Selection
-
-| Scenario | Tool | Why |
-|----------|------|-----|
-| Quick header check | `curl -I` | Fastest, no setup |
-| Deep request manipulation | Burp Repeater | Visual, iterative, easy to compare |
-| Automated parameter fuzzing | Burp Intruder or `wfuzz` | Scale beyond manual testing |
-| API testing | `httpie` or `requests` | Clean output, session management |
-| TLS analysis | `testssl.sh` | Comprehensive, scriptable |
-| Credential cracking | `hashcat` | GPU-accelerated, fast |
-| Website cloning | `wget --mirror` | Offline analysis, hidden content discovery |
-| Scripted exploitation | Python `requests` | Full control, custom logic |
+1. **Burp won't intercept**: Browser proxy must be `127.0.0.1:8080`. Install Burp CA cert. Try Firefox first (easiest proxy setup).
+2. **curl returns empty output**: Add `-v` for verbose. Check if the URL is correct (include `http://`).
+3. **Nmap says all ports filtered**: You might be behind a firewall. For local Docker targets, scan `127.0.0.1`.
+4. **ffuf returns thousands of results**: Use `-fs SIZE` to filter common response sizes. Use `-mc 200,301` to only show valid responses.
+5. **Can't find SecLists**: Install: `sudo apt install seclists` or clone from GitHub.
+6. **Python script import errors**: Install missing packages: `pip3 install requests beautifulsoup4`.

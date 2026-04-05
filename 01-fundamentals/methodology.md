@@ -1,379 +1,394 @@
 # 01 — Fundamentals: Methodology
 
-> This is your step-by-step workflow for the initial phase of any engagement. Before you scan, before you exploit — you do THIS.
+> This is your pre-engagement and assessment kickoff workflow. Follow this BEFORE touching any target.
+
+> 📋 **What You Will Do In This Section**
+> - [ ] Complete a pre-engagement authorization checklist
+> - [ ] Set up your testing environment with verified tool checks
+> - [ ] Perform initial target profiling (technology stack, attack surface)
+> - [ ] Establish a baseline of "normal" behavior for your target
+> - [ ] Create a structured testing plan prioritized by impact
 
 ---
 
-## 🔴 Phase 0: Pre-Engagement
+## 🔴 Pre-Engagement Workflow
 
-### Engagement Checklist
+> 💡 **Why This Matters**
+> Professional pentesting is NOT "start scanning and see what happens." It's a structured process with legal, technical, and procedural steps. Skipping pre-engagement leads to scope creep (testing things you're not authorized to test), missed findings (no structure = random testing), and legal risk (no authorization = crime).
 
 ```
-□ Written authorization received (scope document / Rules of Engagement)
-□ Scope clearly defined:
-  □ In-scope domains / IPs
-  □ Out-of-scope domains / IPs
-  □ Testing window (dates, hours)
-  □ Allowed activities (DoS? Social engineering? Physical?)
-  □ Notification requirements
-  □ Emergency contacts
-□ Testing environment ready:
-  □ VPN connected (if required)
-  □ Burp Suite configured with scope
-  □ Note-taking system ready
-  □ Screenshots naming convention established
-  □ Clock synchronized (important for log correlation)
+┌─────────────────────────────────────────────────────┐
+│              PRE-ENGAGEMENT METHODOLOGY              │
+│                                                      │
+│  PHASE 1: AUTHORIZATION (Before you touch anything)  │
+│     ├── Written scope received                       │
+│     ├── Rules of engagement defined                  │
+│     ├── Emergency contacts documented                │
+│     ├── Testing window confirmed                     │
+│     └── Legal authorization signed                   │
+│                                                      │
+│  PHASE 2: ENVIRONMENT SETUP (30 min)                │
+│     ├── Tools installed and verified                 │
+│     ├── Burp Suite configured with proxy             │
+│     ├── Wordlists downloaded                         │
+│     ├── Note-taking system ready                     │
+│     └── VPN/clean IP configured (if needed)          │
+│                                                      │
+│  PHASE 3: TARGET PROFILING (1 hour)                 │
+│     ├── Technology stack identified                  │
+│     ├── All entry points mapped                      │
+│     ├── Authentication model understood              │
+│     ├── Business logic documented                    │
+│     └── Baseline behavior captured                   │
+│                                                      │
+│  PHASE 4: TEST PLANNING (30 min)                    │
+│     ├── Priority list of endpoints to test           │
+│     ├── Vulnerability classes to focus on             │
+│     ├── Time allocation per area                     │
+│     └── Testing approach documented                  │
+│                                                      │
+│  PHASE 5: EXECUTE → Sections 02-05                  │
+│  PHASE 6: REPORT  → Section 08                      │
+└─────────────────────────────────────────────────────┘
 ```
 
-### Environment Setup Workflow
+---
 
-```bash
-# 1. Create project directory structure
-mkdir -p pentest/{scope,recon,vulns,exploits,evidence,report}
+## 🔴 Phase 1: Authorization
 
-# 2. Document scope
-cat > pentest/scope/scope.md << 'EOF'
-# Scope Document
-## Client: [CLIENT NAME]
-## Date: [DATE]
-## Tester: [YOUR NAME]
+### Authorization Document Template
 
-## In-Scope
-- example.com and all subdomains
-- 10.0.0.0/24
-- API: api.example.com
+```markdown
+# Penetration Test Authorization
 
-## Out-of-Scope
-- production database (10.0.0.50)
-- third-party integrations
-- DoS/DDoS testing
+## Client Information
+- Company: ___________
+- Contact: ___________
+- Email: ___________
+- Phone: ___________
+
+## Scope
+### In Scope:
+- [ ] *.target.com (all subdomains)
+- [ ] api.target.com (REST API)
+- [ ] mobile app (iOS / Android)
+- [ ] IP range: 10.0.0.0/24
+
+### Out of Scope:
+- [ ] payments.target.com
+- [ ] Third-party services (Stripe, AWS console)
+- [ ] Physical security
+- [ ] Social engineering
 
 ## Rules of Engagement
-- Testing hours: 09:00 - 18:00 UTC
-- Maximum scan rate: 100 req/sec
-- No account lockout testing without notification
-- Emergency contact: security@example.com
-EOF
+- Testing window: Mon-Fri, 9am-6pm EST
+- Denial of Service: NOT ALLOWED
+- Data modification: ALLOWED (test accounts only)
+- Social engineering: NOT ALLOWED
+- Automated scanning: ALLOWED (rate limited to 100 req/sec)
 
-# 3. Set up Burp scope
-# Target → Scope → Add → Paste domains
+## Emergency Contact
+- Name: ___________
+- Phone: ___________
+- Email: ___________
+- Escalation: "If system goes down, call immediately"
 
-# 4. Prepare wordlists
-ls /usr/share/seclists/Discovery/Web-Content/
-# common.txt, raft-large-words.txt, directory-list-2.3-medium.txt
+## Authorization
+I, [Name], authorize [Pentester] to perform penetration testing
+on the systems described above during the specified testing window.
+
+Signature: ___________
+Date: ___________
 ```
 
----
+> 💡 **Why This Matters**
+> Without this document, you are committing a crime. With it, you have legal protection and clear boundaries. Real pentesters never start without a signed authorization document — no exceptions.
 
-## 🔴 Phase 1: Passive Information Gathering
-
-### Step 1: Open Source Intelligence (OSINT)
-
-```bash
-# 1. Technology identification
-whatweb target.com
-# or use Wappalyzer browser extension
-
-# 2. DNS records
-dig target.com ANY
-dig target.com MX
-dig target.com NS
-dig target.com TXT    # SPF, DKIM, DMARC records — reveal email infrastructure
-
-# 3. WHOIS information
-whois target.com       # Registration details, name servers, admin contacts
-
-# 4. Historical data
-# https://web.archive.org/web/*/target.com
-# Look for old pages, removed functionality, exposed credentials
-
-# 5. Google dorking
-site:target.com filetype:pdf
-site:target.com filetype:sql
-site:target.com inurl:admin
-site:target.com intitle:"index of"
-site:target.com ext:env OR ext:yml OR ext:config
-site:target.com "password" OR "api_key" OR "secret"
-
-# 6. GitHub/GitLab search
-# Search for: target.com, @target.com
-# Look for: API keys, credentials, internal URLs, configuration files
-
-# 7. Certificate Transparency logs
-# https://crt.sh/?q=%25.target.com
-# Reveals subdomains through SSL certificate registrations
-curl -s "https://crt.sh/?q=%25.target.com&output=json" | jq -r '.[].name_value' | sort -u
-```
-
-### Step 2: Document Findings
+#### 🧪 Try It Now — Fill Out Authorization for Juice Shop
 
 ```markdown
-## Passive Recon Findings
+# Your Practice Authorization (fill this in)
 
-### Technology Stack
-- Web Server: nginx/1.18.0
-- Framework: Express.js (Node.js)
-- CDN: Cloudflare
-- CMS: None detected
-
-### DNS Records
-- A: 104.26.10.78
-- MX: mx.target.com
-- NS: ns1.cloudflare.com
-
-### Subdomains Found
-- admin.target.com
-- api.target.com
-- staging.target.com (!!!)
-- dev.target.com (!!!)
-
-### Interesting Google Results
-- Exposed admin panel: admin.target.com/dashboard
-- SQL backup file: target.com/backup/db.sql.bak
+## Target: OWASP Juice Shop
+- URL: http://localhost:3000
+- Scope: All endpoints (self-hosted lab)
+- Authorization: Self-authorized (local lab)
+- Rules: All techniques permitted, no restrictions
+- Testing window: Anytime
+- Emergency contact: N/A (local Docker container)
 ```
+
+> ✅ **Expected Output**
+> A completed document that you can reference. This builds the habit — on a real engagement, you'll do this automatically.
 
 ---
 
-## 🔴 Phase 2: Active Reconnaissance
+## 🔴 Phase 2: Environment Setup Verification
 
-### Step 1: Network Scanning
-
-```bash
-# Quick port scan
-nmap -sV -sC -T4 target.com -oA pentest/recon/nmap_initial
-
-# Full port scan (all 65535 ports)
-nmap -sV -p- -T4 target.com -oA pentest/recon/nmap_full
-
-# UDP scan (top 100 ports)
-nmap -sU --top-ports 100 -T4 target.com -oA pentest/recon/nmap_udp
-```
-
-### Step 2: Web Application Analysis
+### Tool Verification Script
 
 ```bash
-# 1. Crawl the application
-# Use Burp's built-in spider or:
-gospider -s https://target.com -d 2 -o pentest/recon/spider
+#!/bin/bash
+# verify_tools.sh — Run this before every engagement
 
-# 2. Directory brute forcing
-gobuster dir -u https://target.com -w /usr/share/seclists/Discovery/Web-Content/raft-large-words.txt \
-  -t 50 -o pentest/recon/gobuster.txt -x php,asp,aspx,jsp,html,js,json,txt,bak,old
+echo "=== VAPT Tool Verification ==="
+echo ""
 
-# 3. Check robots.txt and sitemap
-curl https://target.com/robots.txt
-curl https://target.com/sitemap.xml
+# Core tools
+echo "[1/8] Burp Suite..."
+which burpsuite > /dev/null 2>&1 && echo "  ✅ Burp Suite installed" || echo "  ❌ Burp Suite not found"
 
-# 4. Check for exposed files
-curl -s -o /dev/null -w "%{http_code}" https://target.com/.git/HEAD
-curl -s -o /dev/null -w "%{http_code}" https://target.com/.env
-curl -s -o /dev/null -w "%{http_code}" https://target.com/wp-config.php.bak
-curl -s -o /dev/null -w "%{http_code}" https://target.com/web.config
-curl -s -o /dev/null -w "%{http_code}" https://target.com/server-status
+echo "[2/8] Nmap..."
+nmap --version 2>/dev/null | head -1 && echo "  ✅" || echo "  ❌ nmap not found → sudo apt install nmap"
+
+echo "[3/8] ffuf..."
+ffuf -V 2>/dev/null | head -1 && echo "  ✅" || echo "  ❌ ffuf not found → sudo apt install ffuf"
+
+echo "[4/8] SQLMap..."
+sqlmap --version 2>/dev/null && echo "  ✅" || echo "  ❌ sqlmap not found → sudo apt install sqlmap"
+
+echo "[5/8] curl..."
+curl --version 2>/dev/null | head -1 && echo "  ✅" || echo "  ❌ curl not found → sudo apt install curl"
+
+echo "[6/8] Python3..."
+python3 --version 2>/dev/null && echo "  ✅" || echo "  ❌ python3 not found"
+
+echo "[7/8] Wordlists..."
+[ -d "/usr/share/seclists" ] && echo "  ✅ SecLists found at /usr/share/seclists" || echo "  ❌ SecLists not found → sudo apt install seclists"
+[ -f "/usr/share/wordlists/rockyou.txt" ] && echo "  ✅ rockyou.txt found" || echo "  ⚠️  rockyou.txt not found (may need to decompress or download)"
+
+echo "[8/8] Docker..."
+docker --version 2>/dev/null && echo "  ✅" || echo "  ❌ Docker not found"
+
+echo ""
+echo "=== Lab Targets ==="
+echo "Juice Shop: $(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000 2>/dev/null || echo 'DOWN')"
+echo "DVWA:       $(curl -s -o /dev/null -w '%{http_code}' http://localhost 2>/dev/null || echo 'DOWN')"
 ```
 
-### Step 3: Identify All Entry Points
+> ✅ **Expected Output**
+> ```
+> === VAPT Tool Verification ===
+>
+> [1/8] Burp Suite...
+>   ✅ Burp Suite installed
+> [2/8] Nmap...
+>   Nmap version 7.92 ( https://nmap.org )
+>   ✅
+> ...
+> === Lab Targets ===
+> Juice Shop: 200
+> DVWA:       302
+> ```
+> All items should show ✅. Fix any ❌ items before proceeding.
+
+> 🔧 **If Stuck**
+> - Multiple ❌ items → You're not on Kali Linux. Install each tool individually with `sudo apt install TOOL -y`
+> - Docker not running → `sudo systemctl start docker`
+> - Lab targets DOWN → `docker start juiceshop dvwa`
+
+---
+
+## 🔴 Phase 3: Target Profiling
+
+### Step 1: Technology Fingerprinting
+
+```bash
+# Run this against your target to determine the tech stack
+TARGET="http://localhost:3000"
+
+echo "=== Technology Fingerprint: $TARGET ==="
+
+# Response headers
+echo -e "\n--- Response Headers ---"
+curl -sI "$TARGET" | grep -iE "server|x-powered|x-aspnet|x-frame|content-security|strict-transport"
+
+# Technology detection
+echo -e "\n--- Technology Detection ---"
+whatweb "$TARGET" 2>/dev/null || echo "(whatweb not installed — install with: sudo apt install whatweb)"
+
+# JavaScript frameworks (from HTML source)
+echo -e "\n--- Frontend Frameworks ---"
+curl -s "$TARGET" | grep -oP '(angular|react|vue|jquery|backbone|ember)[^"]*\.js' | sort -u | head -10
+```
+
+> ✅ **Expected Output (Juice Shop)**
+> ```
+> === Technology Fingerprint: http://localhost:3000 ===
+>
+> --- Response Headers ---
+> X-Powered-By: Express
+> X-Frame-Options: SAMEORIGIN
+> X-Content-Type-Options: nosniff
+>
+> --- Technology Detection ---
+> http://localhost:3000 [200 OK] Express, HTML5, Script
+>
+> --- Frontend Frameworks ---
+> (Angular framework detected)
+> ```
+> **What you now know**: Backend is Express (Node.js), frontend is Angular. Focus on Node.js-specific vulnerabilities (prototype pollution, NoSQL injection) and Angular template injection.
+
+### Step 2: Capture Baseline Behavior
+
+```bash
+# Document "normal" responses for key endpoints
+TARGET="http://localhost:3000"
+
+echo "=== Baseline: Normal Responses ==="
+for endpoint in "/" "/rest/products/search?q=test" "/rest/user/login" "/api/Products/"; do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET$endpoint")
+  SIZE=$(curl -s "$TARGET$endpoint" | wc -c)
+  echo "  $endpoint → Status: $STATUS, Size: $SIZE bytes"
+done
+```
+
+> ✅ **Expected Output**
+> ```
+> === Baseline: Normal Responses ===
+>   / → Status: 200, Size: 6788 bytes
+>   /rest/products/search?q=test → Status: 200, Size: 12 bytes
+>   /rest/user/login → Status: 500, Size: 267 bytes
+>   /api/Products/ → Status: 200, Size: 26941 bytes
+> ```
+> **Save these numbers.** When you inject payloads, any response that differs from these baseline sizes is potentially interesting.
+
+> 💡 **Why This Matters**
+> Without a baseline, you can't detect anomalies. "The response was 500 bytes" means nothing. "The response was 500 bytes, but the baseline is 200 bytes" means the payload changed something — and that's where you focus.
+
+### Step 3: Map the Application
+
+```bash
+# Automated endpoint discovery
+TARGET="http://localhost:3000"
+
+echo "=== Endpoint Discovery ==="
+
+# Method 1: Directory fuzzing
+echo -e "\n--- Directory Fuzzing (top hits) ---"
+ffuf -u "$TARGET/FUZZ" \
+  -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+  -mc 200,301,302 -t 20 -s 2>/dev/null | head -15
+
+# Method 2: Check common sensitive files
+echo -e "\n--- Sensitive Files Check ---"
+for file in robots.txt .env .git/HEAD sitemap.xml crossdomain.xml security.txt; do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET/$file")
+  [ "$STATUS" != "404" ] && echo "  ⚠️  $file → $STATUS" || echo "  ✅ $file → 404 (not found)"
+done
+```
+
+> ✅ **Expected Output**
+> ```
+> === Endpoint Discovery ===
+>
+> --- Directory Fuzzing (top hits) ---
+> assets
+> ftp
+> profile
+> robots.txt
+>
+> --- Sensitive Files Check ---
+>   ⚠️  robots.txt → 200
+>   ✅ .env → 404 (not found)
+>   ✅ .git/HEAD → 404 (not found)
+>   ...
+> ```
+> **Action items**: Check `/ftp` (might expose files) and `robots.txt` (reveals hidden paths).
+
+---
+
+## 🔴 Phase 4: Test Planning
+
+### Testing Priority Matrix
+
+After profiling, create a prioritized test plan:
 
 ```markdown
-## Entry Points Matrix
+# Test Plan: Juice Shop (http://localhost:3000)
 
-| # | Endpoint              | Method | Auth Required | Parameters        | Notes            |
-|---|----------------------|--------|---------------|-------------------|------------------|
-| 1 | /login               | POST   | No            | user, pass        | Auth endpoint    |
-| 2 | /api/v1/users/{id}   | GET    | Yes (JWT)     | id (path)         | Test IDOR        |
-| 3 | /search              | GET    | No            | q, page, sort     | Test injection   |
-| 4 | /upload              | POST   | Yes           | file (multipart)  | Test RCE         |
-| 5 | /api/v1/webhook      | POST   | Yes           | url (JSON body)   | Test SSRF        |
+## Tech Stack
+- Backend: Express (Node.js)
+- Frontend: Angular
+- Database: SQLite (revealed by error messages)
+- Auth: JWT (RS256)
+
+## Priority Endpoints (highest risk first)
+
+| Priority | Endpoint | Test For | Why |
+|----------|----------|----------|-----|
+| 1 | /rest/user/login | SQLi, brute force | Auth bypass = full compromise |
+| 2 | /rest/products/search?q= | SQLi (confirmed!) | Data extraction |
+| 3 | /api/Feedbacks | Stored XSS, injection | User input stored and rendered |
+| 4 | /rest/basket/{id} | IDOR | Access other users' data |
+| 5 | /ftp | Sensitive file exposure | Discovered via fuzzing |
+| 6 | /api/Users | Mass assignment, IDOR | User creation/enumeration |
+| 7 | /profile | XSS, file upload | User-controlled content |
+
+## Time Allocation
+- Authentication testing: 1 hour
+- Injection testing: 2 hours
+- Access control (IDOR): 1 hour
+- Business logic: 30 min
+- Documentation: 30 min ongoing
 ```
+
+> ✅ **Expected Output**
+> A completed test plan document that guides your testing. You know exactly what to test, in what order, and why.
+
+> 💡 **Why This Matters**
+> Without a plan, you'll spend hours testing low-value endpoints while missing the login SQLi that gives instant admin access. Priority = impact × likelihood. Auth endpoints are always #1.
 
 ---
 
-## 🔴 Phase 3: Vulnerability Identification
-
-### Systematic Testing Approach
-
-For EACH entry point, test in this order:
-
-```
-1. Authentication
-   □ Is auth required? Try without credentials
-   □ Can you use another user's token?
-   □ Can you forge/tamper the token?
-
-2. Authorization
-   □ Can you access other users' resources? (IDOR)
-   □ Can you access admin functions?
-   □ Try different HTTP methods
-
-3. Injection
-   □ SQL injection (', ", ;, --, UNION, SLEEP)
-   □ XSS (<script>, <img>, event handlers)
-   □ Command injection (;, |, &&, ``)
-   □ Template injection ({{7*7}}, ${7*7})
-   □ Path traversal (../, ....// , %2e%2e%2f)
-
-4. Business Logic
-   □ Can you change prices, quantities?
-   □ Can you skip steps in a workflow?
-   □ Race conditions (send same request simultaneously)?
-   □ Negative values (negative quantity = credit?)
-
-5. Information Disclosure
-   □ Verbose error messages?
-   □ Stack traces?
-   □ Internal IPs in responses?
-   □ Sensitive data in comments/JS?
-```
-
-### Testing Priority (Where To Focus Time)
-
-```
-HIGH PRIORITY (test first):
-├── Authentication endpoints → Account takeover potential
-├── File upload functionality → RCE potential
-├── Search/query parameters → SQLi/XSS
-├── API endpoints with user IDs → IDOR
-└── URL/webhook parameters → SSRF
-
-MEDIUM PRIORITY:
-├── User profile/settings → Stored XSS, mass assignment
-├── Password reset flow → Account takeover chain
-├── Export/download functions → IDOR, path traversal
-└── Admin interfaces → Privilege escalation
-
-LOWER PRIORITY (but still check):
-├── Static pages → Reflected XSS via params
-├── Contact/feedback forms → Email injection, stored XSS
-└── Third-party integrations → Trust assumption flaws
-```
-
----
-
-## 🔴 Phase 4: Documentation & Evidence
-
-### Evidence Collection Standard
-
-```bash
-# For every finding:
-# 1. Screenshot of the request in Burp
-# 2. Screenshot of the response showing impact
-# 3. Copy the exact request (curl format)
-# 4. Save the request/response pair from Burp
-
-# Naming convention:
-# VULN-001_sqli_login_endpoint_request.png
-# VULN-001_sqli_login_endpoint_response.png
-# VULN-001_sqli_login_endpoint.txt  (curl command)
-
-# Document in this format:
-cat > pentest/vulns/VULN-001.md << 'EOF'
-## VULN-001: SQL Injection in Login Endpoint
-
-### Severity: Critical (CVSS 9.8)
-### Location: POST /api/v1/login
-### Parameter: username
-
-### Description
-The username parameter in the login endpoint is vulnerable to SQL injection.
-User-supplied input is concatenated directly into a SQL query without sanitization.
-
-### Steps to Reproduce
-1. Navigate to https://target.com/login
-2. Enter the following in the username field: `admin' OR 1=1-- -`
-3. Enter any password
-4. Click Login
-5. Authentication is bypassed and admin access is granted
-
-### Request
-```
-POST /api/v1/login HTTP/1.1
-Host: target.com
-Content-Type: application/json
-
-{"username":"admin' OR 1=1-- -","password":"anything"}
-```
-
-### Response
-```
-HTTP/1.1 200 OK
-{"status":"success","token":"eyJhbGciOiJIUzI1NiJ9...","role":"admin"}
-```
-
-### Impact
-An attacker can bypass authentication entirely and gain administrative access.
-This can lead to full database compromise and data exfiltration.
-
-### Remediation
-1. Use parameterized queries / prepared statements
-2. Implement input validation
-3. Apply principle of least privilege to database accounts
-EOF
-```
-
----
-
-## 🔴 Methodology Flowchart
-
-```
-START
-  │
-  ├─→ Pre-Engagement
-  │     ├─→ Get written authorization
-  │     ├─→ Define scope
-  │     └─→ Set up environment
-  │
-  ├─→ Passive Recon
-  │     ├─→ OSINT (Google, WHOIS, crt.sh)
-  │     ├─→ Technology fingerprinting
-  │     └─→ Document findings
-  │
-  ├─→ Active Recon
-  │     ├─→ Port scanning (Nmap)
-  │     ├─→ Directory enumeration
-  │     ├─→ Spider/crawl application
-  │     └─→ Map all entry points
-  │
-  ├─→ Vulnerability Testing
-  │     ├─→ For each entry point:
-  │     │     ├─→ Test authentication
-  │     │     ├─→ Test authorization
-  │     │     ├─→ Test injection
-  │     │     ├─→ Test business logic
-  │     │     └─→ Test information disclosure
-  │     └─→ Document all findings with evidence
-  │
-  ├─→ Exploitation (if in scope)
-  │     ├─→ Validate each finding
-  │     ├─→ Demonstrate impact
-  │     └─→ Capture evidence
-  │
-  └─→ Reporting
-        ├─→ Executive summary
-        ├─→ Technical findings
-        ├─→ Remediation recommendations
-        └─→ Deliver & debrief
-```
-
----
-
-## 📋 Quick Reference Card
+## 📋 Methodology Cheatsheet
 
 ```
 BEFORE TESTING:
-✓ Authorization in hand
-✓ Scope documented
-✓ Environment ready
+□ Authorization document signed
+□ Scope documented (in/out)
+□ Tools verified (run verify_tools.sh)
+□ Lab targets running
+□ Note-taking system open
 
-DURING TESTING:
-✓ Screenshot everything
-✓ Note exact timestamps
-✓ Save request/response pairs
-✓ Test one thing at a time
-✓ Establish baseline first
+PROFILING (1 hour):
+□ Technology stack identified (whatweb, response headers)
+□ Baseline responses captured (status codes + sizes)
+□ Entry points mapped (ffuf, Burp spider)
+□ Sensitive files checked (robots.txt, .env, .git)
+□ Authentication model understood (JWT? cookies? API keys?)
 
-AFTER TESTING:
-✓ Verify all findings are documented
-✓ Remove any data/accounts you created
-✓ Revoke any access you gained
-✓ Notify client of critical findings immediately
+TEST PLANNING (30 min):
+□ Priority endpoints listed (highest impact first)
+□ Vulnerability classes assigned per endpoint
+□ Time allocated per test area
+□ Documentation template ready
+
+THEN: Proceed to 02-recon/ → 03-web-exploitation/ → ...
 ```
+
+---
+
+## 🧠 If You're Stuck
+
+1. **Don't know where to start**: Run the target profiling commands above. The output will tell you what tech is running and what to test.
+2. **Feeling overwhelmed by the scope**: Pick the TOP 3 endpoints from your test plan. Focus on those first.
+3. **No findings after an hour**: Step back and re-read the error messages you collected. Developers hide secrets in error responses.
+4. **Tools aren't working**: Run `verify_tools.sh` and fix the ❌ items first.
+5. **Not sure if something is a vulnerability**: Ask yourself: "Can I do something the developers didn't intend?" If yes, document it as a finding.
+
+---
+
+## 🧠 Section 01 Complete — Self-Check
+
+Before moving to `02-recon/`, verify you can:
+
+- [ ] Configure Burp Suite proxy and intercept traffic
+- [ ] Send custom HTTP requests with curl (POST, headers, cookies)
+- [ ] Decode a JWT token and identify its claims
+- [ ] Run a port scan with Nmap and interpret the output
+- [ ] Discover hidden directories with ffuf
+- [ ] Detect SQL injection with a single quote payload
+- [ ] Explain the difference between detection and exploitation payloads
+- [ ] Complete a pre-engagement authorization document
+- [ ] Create a prioritized test plan for a target application
