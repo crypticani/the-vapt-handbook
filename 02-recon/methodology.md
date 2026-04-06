@@ -2,9 +2,19 @@
 
 > This is your step-by-step recon methodology. Follow this for every engagement.
 
+> 📋 **What You Will Do In This Section**
+> - [ ] Define scope and boundaries before scanning
+> - [ ] Execute a complete 4-phase recon workflow
+> - [ ] Build a passive recon report with technology stack and OSINT findings
+> - [ ] Validate subdomains and scan for live services
+> - [ ] Create a prioritized attack surface map
+
 ---
 
 ## 🔴 The Recon Framework
+
+> 💡 **Why This Matters**
+> Without a structured methodology, you'll miss things. This framework ensures you check every data source, scan every port, and map every entry point — in a consistent, repeatable order. Real pentesters follow this for EVERY engagement, not just the first time.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -39,6 +49,9 @@
 
 ## 🔴 Phase 1: Scope Definition (15 minutes)
 
+> 💡 **Why This Matters**
+> Scope is your legal protection. Testing something outside scope can end your career and land you in court. Define it clearly BEFORE running a single command. This also prevents wasted effort — there's no point scanning a CDN you can't bypass.
+
 ### Inputs
 - Target domain(s) or IP range(s)
 - Rules of Engagement document
@@ -68,6 +81,23 @@
 - [ ] White box (full access, source code, documentation)
 ```
 
+#### 🧪 Try It Now — Scope Your Juice Shop Engagement
+
+```markdown
+## My Scope Document
+
+### Target: Juice Shop Lab
+- URL: http://localhost:3000
+- Scope: All endpoints on localhost:3000
+- Authorization: Self-hosted lab (full authorization)
+- Approach: Black box (no insider knowledge)
+- Exclusions: None (it's our lab)
+- Time: Unlimited
+```
+
+> ✅ **Expected Output**
+> A completed scope document. On real engagements, this would be signed by the client and include legal language.
+
 ---
 
 ## 🔴 Phase 2: Passive Reconnaissance (1-2 hours)
@@ -88,6 +118,37 @@ whois target.com | grep -iE "registrant|admin|tech|email|created|updated|expires
 # Use: https://bgp.he.net/
 whois -h whois.radb.net -- '-i origin AS12345'
 ```
+
+#### 🧪 Try It Now — Domain Intelligence
+
+```bash
+TARGET="hackerone.com"
+echo "=== WHOIS Summary ==="
+whois $TARGET 2>/dev/null | grep -iE "registrant|created|updated|expires|name.server" | head -10
+
+echo ""
+echo "=== DNS Summary ==="
+echo "A:  $(dig +short $TARGET A | head -2 | tr '\n' ', ')"
+echo "MX: $(dig +short $TARGET MX | head -2 | tr '\n' ', ')"
+echo "NS: $(dig +short $TARGET NS | head -2 | tr '\n' ', ')"
+```
+
+> ✅ **Expected Output**
+> ```
+> === WHOIS Summary ===
+> Creation Date: 2011-...
+> Updated Date: 2024-...
+> Name Server: ns1.p16.dynect.net
+>
+> === DNS Summary ===
+> A:  104.16.100.52, 104.16.99.52,
+> MX: 1 aspmx.l.google.com., 5 alt1.aspmx.l.google.com.,
+> NS: ns1.p16.dynect.net., ns2.p16.dynect.net.,
+> ```
+
+> 🔧 **If Stuck**
+> - `whois: command not found` → `sudo apt install whois -y`
+> - WHOIS returns "REDACTED" → Many domains use WHOIS privacy now. Check https://viewdns.info for historical WHOIS.
 
 ### Step 2.2: Subdomain Discovery (Passive Only)
 
@@ -188,9 +249,15 @@ Interesting:
 4. DMARC policy = none → email spoofing possible
 ```
 
+> ✅ **Expected Output**
+> A completed report like above. On real engagements, this report goes into your final deliverable and shows the client how much information is publicly available about them.
+
 ---
 
 ## 🔴 Phase 3: Active Reconnaissance (2-4 hours)
+
+> 💡 **Why This Matters**
+> Active recon directly interacts with the target — port scanning, brute forcing directories, probing services. It's more revealing than passive recon but leaves traces in logs. Execute this phase after passive recon has narrowed your focus.
 
 ### Step 3.1: Subdomain Validation & Expansion
 
@@ -227,6 +294,42 @@ nmap -sV -sC -p <open_ports> <interesting_IP> -oA nmap_deep_<hostname>
 # UDP scan
 sudo nmap -sU --top-ports 50 -T4 <interesting_IP> -oA nmap_udp_<hostname>
 ```
+
+#### 🧪 Try It Now — Active Recon on Juice Shop
+
+```bash
+echo "=== Port Scan ==="
+nmap -sV -p 3000 localhost 2>/dev/null | grep "open"
+
+echo ""
+echo "=== Directory Discovery ==="
+ffuf -u http://localhost:3000/FUZZ \
+  -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+  -mc 200,301,302 -t 20 -s 2>/dev/null | head -10
+
+echo ""
+echo "=== Sensitive Files ==="
+for path in .git/HEAD .env robots.txt sitemap.xml .well-known/security.txt package.json; do
+  code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000/$path")
+  [ "$code" != "404" ] && echo "  ⚠️  $path → $code"
+done
+```
+
+> ✅ **Expected Output**
+> ```
+> === Port Scan ===
+> 3000/tcp open  http    Node.js Express framework
+>
+> === Directory Discovery ===
+> assets
+> ftp
+> profile
+> robots.txt
+>
+> === Sensitive Files ===
+>   ⚠️  robots.txt → 200
+>   ⚠️  package.json → 200
+> ```
 
 ### Step 3.3: Web Content Discovery
 
@@ -275,6 +378,9 @@ curl -s -X POST "$url/graphql" \
 ---
 
 ## 🔴 Phase 4: Attack Surface Mapping (30 minutes)
+
+> 💡 **Why This Matters**
+> This is your master document — the output of ALL your recon work, organized for exploitation. Without it, you'll forget findings, miss connections, and waste time retesting things. With it, you have a clear, prioritized plan of attack.
 
 ### Build The Master Document
 
@@ -338,6 +444,43 @@ curl -s -X POST "$url/graphql" \
 6. 🟢 www.target.com → Standard web app test
 ```
 
+#### 🧪 Try It Now — Build Your Juice Shop Attack Surface Map
+
+```markdown
+## Attack Surface Map: Juice Shop
+
+### Date: [TODAY]
+### Target: http://localhost:3000
+
+### Technology Stack
+| Layer | Technology | Source |
+|-------|-----------|--------|
+| Backend | Express (Node.js) | X-Powered-By header |
+| Database | SQLite | Error message |
+| Frontend | Angular | JavaScript analysis |
+| Auth | JWT (RS256) | Login response |
+| CORS | * (allow all) | Access-Control-Allow-Origin |
+
+### Entry Points (fill in from your Lab 2 results)
+| # | Endpoint | Method | Risk | Attack Vector |
+|---|----------|--------|------|---------------|
+| 1 | /rest/user/login | POST | High | SQLi (confirmed!) |
+| 2 | /rest/products/search?q= | GET | High | SQLi (confirmed!) |
+| 3 | /api/Users/ | GET/POST | High | IDOR, mass assignment |
+| 4 | /api/Feedbacks/ | POST | Medium | Stored XSS |
+| 5 | /rest/basket/{id} | GET | High | IDOR |
+| 6 | /ftp/ | GET | Medium | File disclosure |
+
+### Quick Wins
+1. SQLi on search → dump database
+2. IDOR on baskets → access other users' data
+3. /ftp/ → download exposed files
+4. JWT manipulation → escalate to admin
+```
+
+> ✅ **Expected Output**
+> A completed attack surface map. This is your roadmap for `03-web-exploitation/`. Every exploit you'll run is targeting an entry point from this map.
+
 ---
 
 ## 📋 Phase Completion Checklist
@@ -352,20 +495,21 @@ PHASE 2: PASSIVE RECON
 □ DNS records enumerated (all types)
 □ Subdomains discovered (crt.sh + subfinder + others)
 □ Technology stack identified
-□ Google dorking completed
+□ Google dorking completed (15+ queries)
 □ GitHub/source code search done
 □ Wayback Machine analyzed
 □ WHOIS information gathered
 □ Shodan searched
 
 PHASE 3: ACTIVE RECON
-□ Subdomains validated and expanded
-□ Live hosts identified
-□ Full port scan completed
-□ Service versions detected
-□ Directories/files enumerated
+□ Subdomains validated and expanded (brute force)
+□ Live hosts identified (httpx)
+□ Full port scan completed (TCP + UDP)
+□ Service versions detected (nmap -sV)
+□ Directories/files enumerated (ffuf/gobuster)
 □ API documentation searched
 □ Virtual hosts checked
+□ Sensitive files checked (25+ paths)
 
 PHASE 4: ATTACK SURFACE MAP
 □ Infrastructure overview documented
@@ -374,5 +518,15 @@ PHASE 4: ATTACK SURFACE MAP
 □ Quick wins identified
 □ Technologies mapped to CVEs
 □ Testing order prioritized
-□ Ready for exploitation phase
+□ Ready for exploitation phase → 03-web-exploitation/
 ```
+
+---
+
+## 🧠 If You're Stuck
+
+1. **Don't know where to start Phase 2**: Start with DNS — `dig target.com A MX NS TXT +short`. Then crt.sh for subdomains. Then Google dorks. Follow the order above.
+2. **Phase 3 scan taking too long**: Prioritize. Quick port scan first (`--top-ports 100`), then full scan on interesting hosts only.
+3. **Can't build the attack surface map**: Use the template above. Fill in what you know, leave gaps for what you don't. The map improves as you test.
+4. **Findings seem overwhelming**: Focus on the Quick Wins section. Start with the easiest, highest-impact targets. On most engagements, 80% of findings come from 20% of the attack surface.
+5. **Not finding anything on passive recon**: Some targets have excellent security posture. That's OK — it means you focus more on application-level testing in Phase 3/4.

@@ -2,6 +2,15 @@
 
 > Recon is where pentests are won or lost. 80% of your time should be here. The more you know about the target, the fewer exploits you need.
 
+> 📋 **What You Will Do In This Section**
+> - [ ] Understand the full recon kill chain (passive → active → mapping)
+> - [ ] Perform DNS enumeration and extract intelligence from records
+> - [ ] Discover subdomains through certificate transparency
+> - [ ] Use Google dorking to find exposed files, admin panels, and leaked secrets
+> - [ ] Run active subdomain enumeration and identify live hosts
+> - [ ] Scan ports with Nmap and fingerprint services
+> - [ ] Map the complete attack surface of a target into a prioritized document
+
 ---
 
 ## 🔴 The Recon Mindset
@@ -13,7 +22,8 @@ Bad pentester:  Finds target → Runs scanner → Reports whatever scanner finds
 Good pentester: Finds target → Maps EVERYTHING → Identifies the ONE weakness that matters
 ```
 
-The goal of recon isn't to collect data — it's to build a **mental model** of the target's infrastructure, technology stack, and attack surface. Every piece of information narrows your search.
+> 💡 **Why This Matters**
+> The goal of recon isn't to collect data — it's to build a **mental model** of the target's infrastructure, technology stack, and attack surface. Every piece of information narrows your search. A 10-minute recon phase that discovers a staging server with default credentials is worth more than 10 hours of blind SQLi testing.
 
 ### The Recon Kill Chain
 
@@ -47,6 +57,9 @@ ATTACK SURFACE MAPPING (combining everything)
 
 ## 🔴 Passive Reconnaissance
 
+> 💡 **Why This Matters**
+> Passive recon leaves NO trace in the target's logs. You're using public data sources — DNS records, certificates, search engines, archived pages. The target has no idea you're looking at them. This is legal against ANY target and is always your first step.
+
 ### DNS Intelligence
 
 DNS tells you everything about how an organization's infrastructure is built.
@@ -74,6 +87,54 @@ dig axfr @ns1.target.com target.com
 # DNS over HTTPS (bypass DNS logging)
 curl -s "https://1.1.1.1/dns-query?name=target.com&type=A" -H "Accept: application/dns-json" | jq
 ```
+
+#### 🧪 Try It Now — DNS Enumeration Against a Public Target
+
+```bash
+# Let's enumerate a public target (hackerone.com is fair game — it's a bug bounty platform)
+TARGET="hackerone.com"
+
+echo "=== DNS Records for $TARGET ==="
+for type in A MX NS TXT; do
+  echo "--- $type ---"
+  dig $TARGET $type +short
+done
+
+# Try a zone transfer (will almost certainly fail on a well-configured target)
+echo "--- Zone Transfer ---"
+dig axfr @$(dig $TARGET NS +short | head -1) $TARGET 2>&1 | head -5
+```
+
+> ✅ **Expected Output**
+> ```
+> === DNS Records for hackerone.com ===
+> --- A ---
+> 104.16.100.52
+> 104.16.99.52
+> --- MX ---
+> 1 aspmx.l.google.com.
+> 5 alt1.aspmx.l.google.com.
+> ...
+> --- NS ---
+> ns1.p16.dynect.net.
+> ns2.p16.dynect.net.
+> ...
+> --- TXT ---
+> "v=spf1 ... ~all"
+> ...
+> --- Zone Transfer ---
+> ; Transfer failed.
+> ```
+> **What you learned:**
+> - `A` records → Two IPs, probably behind Cloudflare
+> - `MX` records → Google Workspace (aspmx.l.google.com) → they use Gmail for email
+> - `TXT` records → SPF record reveals authorized email senders
+> - Zone transfer failed → DNS is properly configured (this would be a huge finding if it worked)
+
+> 🔧 **If Stuck**
+> - `dig: command not found` → Install: `sudo apt install dnsutils -y`
+> - No output → Check internet connectivity. Try `dig google.com A +short`
+> - Timeout → DNS might be blocking queries. Try a different resolver: `dig @8.8.8.8 hackerone.com A +short`
 
 ### 🧠 Attacker Thinking: Reading DNS Records
 
@@ -119,7 +180,44 @@ cat subdomains.txt | while read sub; do
 done
 ```
 
+#### 🧪 Try It Now — Find Subdomains via Certificate Transparency
+
+```bash
+# Discover subdomains of a real bug bounty target
+TARGET="hackerone.com"
+curl -s "https://crt.sh/?q=%25.${TARGET}&output=json" | \
+  jq -r '.[].name_value' 2>/dev/null | \
+  sed 's/\*\.//g' | \
+  sort -u > /tmp/crtsh_subs.txt
+
+echo "Found $(wc -l < /tmp/crtsh_subs.txt) unique subdomains"
+echo "--- Top 20 subdomains ---"
+head -20 /tmp/crtsh_subs.txt
+```
+
+> ✅ **Expected Output**
+> ```
+> Found 30+ unique subdomains
+> --- Top 20 subdomains ---
+> api.hackerone.com
+> docs.hackerone.com
+> gslink.hackerone.com
+> hackerone.com
+> mta-sts.hackerone.com
+> www.hackerone.com
+> ...
+> ```
+> Each of these subdomains is a potential attack surface. `api.hackerone.com` is the API, `docs.hackerone.com` hosts documentation — and any dev/staging subdomains are high-priority targets.
+
+> 🔧 **If Stuck**
+> - `jq: command not found` → Install: `sudo apt install jq -y`
+> - crt.sh returns empty → The site might be rate-limiting. Wait 30 seconds and retry, or visit `https://crt.sh/?q=%25.hackerone.com` in your browser.
+> - JSON parse error → crt.sh sometimes returns HTML instead of JSON. Add `2>/dev/null` to suppress errors.
+
 ### Google Dorking (Advanced)
+
+> 💡 **Why This Matters**
+> Google has already crawled and indexed parts of your target that the target itself may have forgotten about. Exposed admin panels, backup files, leaked credentials, and debug pages are all findable through creative search queries — without touching the target directly.
 
 ```bash
 # Find exposed admin panels
@@ -157,6 +255,21 @@ site:*.target.com -www
 cache:target.com/admin
 ```
 
+#### 🧪 Try It Now — Google Dork Practice
+
+Open Google in your browser and search for each of these (replace with a real bug bounty target):
+
+```
+1. site:hackerone.com filetype:pdf
+2. site:*.hackerone.com -www
+3. site:github.com "hackerone.com" api_key
+```
+
+> ✅ **Expected Output**
+> - Query 1: PDF files hosted on the domain (policies, reports, whitepapers)
+> - Query 2: Non-www subdomains Google has indexed
+> - Query 3: Code on GitHub that references the domain with potential API keys
+
 ### GitHub & Source Code Leaks
 
 ```bash
@@ -185,6 +298,42 @@ pip3 install git-dumper
 git-dumper https://target.com/.git/ ./dumped_repo
 ```
 
+#### 🧪 Try It Now — Check Juice Shop for Git Exposure
+
+```bash
+# Check if Juice Shop exposes version control
+echo "--- .git exposure ---"
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/.git/HEAD
+echo ""
+
+echo "--- .env exposure ---"
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/.env
+echo ""
+
+echo "--- robots.txt ---"
+curl -s http://localhost:3000/robots.txt
+
+echo "--- ftp directory ---"
+curl -s http://localhost:3000/ftp/ | head -20
+```
+
+> ✅ **Expected Output**
+> ```
+> --- .git exposure ---
+> 404
+> --- .env exposure ---
+> 404
+> --- robots.txt ---
+> User-agent: *
+> Disallow: /ftp
+> --- ftp directory ---
+> (HTML listing of files in the /ftp directory)
+> ```
+> **Key findings:**
+> - `.git` and `.env` are not exposed (404) — good security
+> - `robots.txt` reveals `/ftp` — a directory the site doesn't want search engines to index
+> - `/ftp` is actually accessible and contains files! This is information disclosure.
+
 ### Wayback Machine
 
 ```bash
@@ -202,9 +351,15 @@ go install github.com/tomnomnom/waybackurls@latest
 echo target.com | waybackurls > wayback_urls.txt
 ```
 
+> 💡 **Why This Matters**
+> Websites delete sensitive content but the Wayback Machine remembers. Admin panels that were removed, configuration files that were briefly exposed, and old API endpoints that still work — all findable through historical snapshots.
+
 ---
 
 ## 🔴 Active Reconnaissance
+
+> 💡 **Why This Matters**
+> Active recon involves directly interacting with the target. Unlike passive recon, the target CAN log your requests. But it reveals much more — live services, open ports, hidden directories, and real-time behavior. Always do passive first, then go active.
 
 ### Subdomain Enumeration (The Money Maker)
 
@@ -276,6 +431,36 @@ nmap -sU --top-ports 50 -T4 -oA nmap_udp target.com
 nmap --script vuln -p 80,443 target.com
 ```
 
+#### 🧪 Try It Now — Nmap Scan Against Juice Shop
+
+```bash
+# Scan your local lab targets
+echo "=== Quick Service Scan ==="
+nmap -sV -p 80,3000 localhost 2>/dev/null
+
+echo ""
+echo "=== Full Port Scan (local fast) ==="
+nmap -sS -p- --min-rate 10000 localhost -oA /tmp/nmap_lab 2>/dev/null | grep "open"
+```
+
+> ✅ **Expected Output**
+> ```
+> === Quick Service Scan ===
+> PORT     STATE SERVICE VERSION
+> 80/tcp   open  http    Apache httpd 2.4.x
+> 3000/tcp open  http    Node.js Express framework
+>
+> === Full Port Scan (local fast) ===
+> 80/tcp   open  http
+> 3000/tcp open  ppp
+> ```
+> Port 80 is DVWA (Apache), port 3000 is Juice Shop (Express). On a real target, you'd see many more services — SSH, databases, admin panels.
+
+> 🔧 **If Stuck**
+> - `You requested a scan type which requires root privileges` → Run with `sudo`: `sudo nmap -sS ...`
+> - Scan takes forever → For local targets, add `--min-rate 10000`. For remote targets, `--min-rate 1000` is safer.
+> - All ports filtered → You may have a firewall blocking. For local Docker targets, scan `127.0.0.1`.
+
 ### Nmap Flags You Must Know
 
 ```bash
@@ -339,6 +524,27 @@ nmap --script "default and safe" target.com
 nmap --script "http-*" target.com
 ```
 
+#### 🧪 Try It Now — NSE Scripts Against Juice Shop
+
+```bash
+# Run HTTP enumeration scripts against Juice Shop
+nmap --script http-enum -p 3000 localhost 2>/dev/null
+
+# Run HTTP methods detection
+nmap --script http-methods -p 3000 localhost 2>/dev/null
+```
+
+> ✅ **Expected Output**
+> ```
+> PORT     STATE SERVICE
+> 3000/tcp open  ppp
+> | http-enum:
+> |   /ftp/: Potentially interesting directory
+> |   /robots.txt: Robots file
+> |_  /assets/: Potentially interesting directory
+> ```
+> NSE automatically found the `/ftp` directory — which matches what we found in `robots.txt` earlier!
+
 ---
 
 ## 🔴 Directory & File Enumeration
@@ -352,6 +558,9 @@ nmap --script "http-*" target.com
 4. Check for backup files (.bak, .old, .swp)
 5. Always check for version control exposure (.git, .svn)
 ```
+
+> 💡 **Why This Matters**
+> Developers deploy files they think are hidden — backup configs, test scripts, debug endpoints, old versions. Directory brute forcing finds them by systematically trying thousands of common paths. A single `.env.bak` file can contain database credentials.
 
 ### Gobuster
 
@@ -433,6 +642,39 @@ ffuf -u https://target.com/FUZZ1/FUZZ2 \
   -w /usr/share/seclists/Discovery/Web-Content/raft-small-files.txt:FUZZ2
 ```
 
+#### 🧪 Try It Now — Fuzz Juice Shop APIs
+
+```bash
+# Discover REST API endpoints
+echo "=== /api/ endpoints ==="
+ffuf -u http://localhost:3000/api/FUZZ \
+  -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+  -mc 200,301,302,401,403,500 -t 20 -s 2>/dev/null | head -10
+
+echo ""
+echo "=== /rest/ endpoints ==="
+ffuf -u http://localhost:3000/rest/FUZZ \
+  -w /usr/share/seclists/Discovery/Web-Content/common.txt \
+  -mc 200,301,302,401,403,500 -t 20 -s 2>/dev/null | head -10
+```
+
+> ✅ **Expected Output**
+> ```
+> === /api/ endpoints ===
+> Challenges
+> Feedbacks
+> Products
+> Quantitys
+> Users
+>
+> === /rest/ endpoints ===
+> basket
+> captcha
+> products
+> user
+> ```
+> You just discovered the full Juice Shop API structure! Each of these is a potential attack endpoint (IDOR on Users, injection on Feedbacks, etc.).
+
 ---
 
 ## 🔴 Technology Fingerprinting
@@ -481,6 +723,50 @@ curl "https://target.com/?id=1' OR 1=1-- -"
 # If you get a generic block page → WAF detected
 ```
 
+#### 🧪 Try It Now — Fingerprint Juice Shop Tech Stack
+
+```bash
+echo "=== Response Headers ==="
+curl -sI http://localhost:3000 | grep -iE "^(server|x-powered|set-cookie|x-frame|x-content|access-control)"
+
+echo ""
+echo "=== whatweb ==="
+whatweb -q http://localhost:3000 2>/dev/null
+
+echo ""
+echo "=== Error-based detection ==="
+curl -s "http://localhost:3000/rest/products/search?q='" 2>/dev/null | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    err = data.get('error', {})
+    print(f'Database: {\"SQLite\" if \"SQLITE\" in str(err) else \"Unknown\"}')
+    print(f'ORM: {\"Sequelize\" if \"Sequelize\" in str(err) else \"Unknown\"}')
+except: print('Could not parse error')
+"
+```
+
+> ✅ **Expected Output**
+> ```
+> === Response Headers ===
+> X-Powered-By: Express
+> Access-Control-Allow-Origin: *
+> X-Content-Type-Options: nosniff
+> X-Frame-Options: SAMEORIGIN
+>
+> === whatweb ===
+> http://localhost:3000 [200 OK] Express, HTML5, Script
+>
+> === Error-based detection ===
+> Database: SQLite
+> ORM: Sequelize
+> ```
+> **Complete tech stack identified:**
+> - Backend: Express (Node.js)
+> - Database: SQLite (via Sequelize ORM)
+> - Frontend: Angular (from JavaScript analysis)
+> - CORS: Wide open (`*`)
+
 ---
 
 ## 🔴 Attack Surface Mapping
@@ -519,6 +805,42 @@ After recon, you should have this:
 | 4 | POST /api/webhook | High | URL parameter — SSRF |
 | 5 | GET /api/search?q= | High | Reflected input — SQLi/XSS |
 ```
+
+#### 🧪 Try It Now — Build an Attack Surface Map for Juice Shop
+
+```bash
+echo "================================================================"
+echo "  ATTACK SURFACE MAP: Juice Shop (http://localhost:3000)"
+echo "================================================================"
+
+echo ""
+echo "--- Technology Stack ---"
+echo "Backend:  Express (Node.js)"
+echo "Database: SQLite via Sequelize"
+echo "Frontend: Angular"
+echo "Auth:     JWT (RS256)"
+echo "CORS:     * (wide open)"
+
+echo ""
+echo "--- Key Endpoints ---"
+for endpoint in "/rest/user/login" "/rest/products/search?q=test" "/api/Users/" "/api/Products/" "/api/Feedbacks/" "/ftp/" "/rest/basket/1"; do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000$endpoint")
+  SIZE=$(curl -s "http://localhost:3000$endpoint" | wc -c)
+  echo "  $endpoint → $STATUS ($SIZE bytes)"
+done
+```
+
+> ✅ **Expected Output**
+> ```
+> --- Key Endpoints ---
+>   /rest/user/login → 500 (267 bytes)
+>   /rest/products/search?q=test → 200 (12 bytes)
+>   /api/Users/ → 200 (large — user list!)
+>   /api/Products/ → 200 (large — products)
+>   /api/Feedbacks/ → 200 (feedback data)
+>   /ftp/ → 200 (file listing!)
+>   /rest/basket/1 → 401 (needs auth — IDOR target)
+> ```
 
 ---
 
@@ -567,8 +889,22 @@ MAPPING:
 
 ## 🧠 If You're Stuck
 
-1. **No subdomains found**: Try different wordlists, check certificate transparency, check DNS brute force
-2. **Everything behind a CDN**: Look for origin IP via historical DNS (SecurityTrails), email headers, or misconfigured subdomains
-3. **WAF blocking scans**: Slow down, use custom User-Agents, try from different IPs
-4. **No interesting ports**: Focus on web application testing — the attack surface is in the application logic, not the infrastructure
-5. **Don't know where to start**: Start with the technology stack → search for known CVEs → then test custom functionality
+1. **No subdomains found**: Try different wordlists, check certificate transparency, check DNS brute force. Some targets have very few subdomains — that's OK, focus on the main app.
+2. **Everything behind a CDN**: Look for origin IP via historical DNS (SecurityTrails), email headers (send an email that triggers a reply), or misconfigured subdomains that resolve directly.
+3. **WAF blocking scans**: Slow down (`-T2` in Nmap, `-rate 10` in ffuf), use custom User-Agents, try from different IPs. Or focus on application-level testing where the WAF passes requests through.
+4. **No interesting ports**: Focus on web application testing — the attack surface is in the application logic, not the infrastructure. Modern apps run everything through port 80/443.
+5. **Don't know where to start**: Start with the technology stack → search for known CVEs → then test custom functionality.
+
+---
+
+## 🧠 Section 02 Complete — Self-Check
+
+Before moving to `03-web-exploitation/`, verify you can:
+
+- [ ] Enumerate DNS records and extract intelligence from MX, TXT, and CNAME entries
+- [ ] Find subdomains through certificate transparency (crt.sh)
+- [ ] Run at least 5 useful Google dork queries for a target
+- [ ] Perform a full Nmap port scan and interpret the service versions
+- [ ] Discover hidden directories and API endpoints with ffuf
+- [ ] Fingerprint a web application's technology stack from response headers and errors
+- [ ] Build a prioritized attack surface map document

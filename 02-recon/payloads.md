@@ -2,9 +2,19 @@
 
 > Recon payloads are not attack payloads — they're probes designed to discover, enumerate, and fingerprint. They help you understand what you're up against before you attack.
 
+> 📋 **What You Will Do In This Section**
+> - [ ] Attempt DNS zone transfers and brute force subdomains
+> - [ ] Check a target for 25+ sensitive file paths
+> - [ ] Run Google dork queries to find exposed information
+> - [ ] Probe HTTP headers for WAF bypass and information leakage
+> - [ ] Use Shodan dorks to discover exposed services
+
 ---
 
 ## 🔴 DNS Enumeration Payloads
+
+> 💡 **Why This Matters**
+> DNS is the directory of the internet. A misconfigured DNS server (especially one allowing zone transfers) gives you the complete map of a target's infrastructure in one query — every subdomain, every IP, every service. Zone transfer is the single highest-value passive recon finding.
 
 ### Zone Transfer
 ```bash
@@ -15,9 +25,34 @@ for ns in $(dig target.com NS +short); do
 done
 ```
 
-### DNS Record Brute Force
+#### 🧪 Try It Now — Zone Transfer Test
+
 ```bash
-# Common subdomains to check
+# Test against a known vulnerable DNS server (zonetransfer.me is designed for practicing)
+echo "=== Zone Transfer: zonetransfer.me ==="
+dig axfr @nsztm1.digi.ninja zonetransfer.me 2>/dev/null | head -25
+```
+
+> ✅ **Expected Output**
+> ```
+> zonetransfer.me.    7200  IN  SOA nsztm1.digi.ninja. ...
+> zonetransfer.me.    300   IN  A   5.196.105.14
+> _acme-challenge.zonetransfer.me. 301 IN TXT "..."
+> email.zonetransfer.me.  7200  IN  A   74.125.206.26
+> info.zonetransfer.me.   7200  IN  A   74.125.206.26
+> office.zonetransfer.me. 7200  IN  A   40.101.26.242
+> ...
+> ```
+> **This is a jackpot!** A successful zone transfer reveals ALL DNS records — every subdomain, mail server, and internal service. On a real target, this would be a critical finding.
+
+> 🔧 **If Stuck**
+> - "Connection refused" → The DNS server doesn't allow zone transfers (most don't). This is expected — it's still worth trying.
+> - `dig: command not found` → `sudo apt install dnsutils -y`
+
+### DNS Record Brute Force
+
+```bash
+# Common subdomains to check (use as wordlist or test manually)
 www mail ftp vpn remote admin portal webmail 
 staging dev test qa uat prod pre-prod
 api api-v1 api-v2 api-gateway graphql
@@ -35,7 +70,11 @@ beta canary internal intranet
 
 ## 🔴 Web Discovery Payloads
 
+> 💡 **Why This Matters**
+> Sensitive files are deployed accidentally all the time. A `.env` file contains database credentials. A `.git/HEAD` file lets you download the entire source code. A `swagger.json` documents every API endpoint. These payloads systematically check for common mistakes.
+
 ### Sensitive File Paths
+
 ```
 # Version Control
 .git/HEAD
@@ -131,6 +170,34 @@ firebase.json
 serverless.yml
 ```
 
+#### 🧪 Try It Now — Scan Juice Shop for Sensitive Files
+
+```bash
+echo "=== Sensitive File Scan: Juice Shop ==="
+for file in .git/HEAD .env .env.bak robots.txt package.json swagger.json \
+  api-docs graphql .well-known/security.txt sitemap.xml \
+  config.json app.config Dockerfile docker-compose.yml \
+  server-status debug trace actuator actuator/env \
+  wp-config.php .DS_Store backup.sql backup.zip; do
+  code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000/$file")
+  size=$(curl -s "http://localhost:3000/$file" | wc -c)
+  if [ "$code" != "404" ] && [ "$code" != "000" ]; then
+    echo "  ⚠️  $file → HTTP $code ($size bytes)"
+  fi
+done
+```
+
+> ✅ **Expected Output**
+> ```
+>   ⚠️  robots.txt → HTTP 200 (28 bytes)
+>   ⚠️  package.json → HTTP 200 (large)
+>   ⚠️  ftp → HTTP 200 (11000+ bytes)
+> ```
+> **Findings:**
+> - `robots.txt` → Reveals disallowed paths (hidden content)
+> - `package.json` → Reveals all dependencies and their versions (search for CVEs!)
+> - `/ftp` → Open directory with downloadable files (information disclosure)
+
 ### Interesting HTTP Methods
 ```http
 OPTIONS / HTTP/1.1
@@ -142,6 +209,28 @@ PROPFIND / HTTP/1.1
 MOVE / HTTP/1.1
 COPY / HTTP/1.1
 ```
+
+#### 🧪 Try It Now — Test HTTP Methods
+
+```bash
+echo "=== HTTP Method Testing: Juice Shop ==="
+for method in GET POST PUT DELETE PATCH OPTIONS TRACE; do
+  code=$(curl -s -o /dev/null -w "%{http_code}" -X $method http://localhost:3000/)
+  echo "  $method → $code"
+done
+```
+
+> ✅ **Expected Output**
+> ```
+>   GET → 200
+>   POST → 200
+>   PUT → 200
+>   DELETE → 200
+>   PATCH → 200
+>   OPTIONS → 204
+>   TRACE → 200
+> ```
+> Multiple methods returning `200` on the same endpoint means the application isn't restricting methods properly. `OPTIONS` returning `204` reveals CORS preflight support.
 
 ### Virtual Host Discovery
 ```
@@ -159,6 +248,9 @@ Host: target.com.evil.com
 ---
 
 ## 🔴 Google Dork Payloads
+
+> 💡 **Why This Matters**
+> Google has indexed millions of pages — including pages that companies have since deleted or forgotten about. Google dorks use advanced search operators to find exposed files, admin panels, test environments, and leaked credentials without ever touching the target.
 
 ```
 # Complete dork collection for a target
@@ -228,6 +320,9 @@ site:storage.googleapis.com "target"
 
 ## 🔴 Shodan Dorks
 
+> 💡 **Why This Matters**
+> Shodan has already port-scanned the entire internet. Instead of scanning your target (which is slow and leaves logs), query Shodan for instant intelligence — open ports, services, TLS certificates, exposed dashboards, and default credentials.
+
 ```
 # Target-specific
 hostname:target.com
@@ -285,11 +380,14 @@ nmap --script ssl-enum-ciphers,ssl-cert,ssl-heartbleed -p 443 target.com
 
 ## 🔴 HTTP Header Probes
 
+> 💡 **Why This Matters**
+> Headers manipulate how the server routes and processes your request. Spoofing `X-Forwarded-For` can bypass IP-based restrictions. Manipulating the `Host` header can access internal virtual hosts. Probing `Origin` headers reveals CORS misconfiguration. These are passive-aggressive probes — they test defenses without attacking.
+
 ### Information Gathering Headers
 ```http
 # Send these in requests to elicit different server behavior:
 
-# WAF bypass
+# WAF / IP bypass
 X-Forwarded-For: 127.0.0.1
 X-Real-IP: 127.0.0.1
 X-Originating-IP: 127.0.0.1
@@ -316,6 +414,40 @@ Content-Type: application/x-www-form-urlencoded
 Content-Type: multipart/form-data
 ```
 
+#### 🧪 Try It Now — Header Probing on Juice Shop
+
+```bash
+echo "=== CORS Probe ==="
+curl -sI -H "Origin: https://evil.com" http://localhost:3000/ | grep -i "access-control"
+
+echo ""
+echo "=== X-Forwarded-For ==="
+curl -s -H "X-Forwarded-For: 127.0.0.1" http://localhost:3000/rest/products/search?q=test -o /dev/null -w "Status: %{http_code}\n"
+
+echo ""
+echo "=== Content-Type Switch ==="
+curl -s -X POST http://localhost:3000/rest/user/login \
+  -H "Content-Type: application/xml" \
+  -d '<login><email>test</email><password>test</password></login>' \
+  -o /dev/null -w "Status: %{http_code}\n"
+```
+
+> ✅ **Expected Output**
+> ```
+> === CORS Probe ===
+> Access-Control-Allow-Origin: *
+>
+> === X-Forwarded-For ===
+> Status: 200
+>
+> === Content-Type Switch ===
+> Status: 500
+> ```
+> **Findings:**
+> - CORS allows ANY origin (`*`) — cross-origin data theft possible
+> - X-Forwarded-For is accepted — could bypass IP restrictions
+> - XML content type causes `500` — XML parsing might be happening (XXE potential?)
+
 ---
 
 ## 📋 Recon Payload Checklist
@@ -332,4 +464,15 @@ For every target:
 □ Virtual hosts enumerated
 □ API documentation endpoints checked
 □ WAF detection performed
+□ CORS configuration probed
+□ Header manipulation tested
 ```
+
+---
+
+## 🧠 If You're Stuck
+
+1. **Zone transfer always fails**: This is expected on 99% of targets. It's still worth trying — when it works, it's a jackpot. Move on to other subdomain techniques.
+2. **Google dorks return nothing**: The target might have good SEO hygiene. Try broader queries or check GitHub/Pastebin instead.
+3. **Sensitive file scan finds nothing**: The presence of files depends on the technology. A Node.js app won't have `wp-config.php`. Adjust your file list to match the detected technology stack.
+4. **Not sure what to do with findings**: Each finding maps to a next step — `robots.txt` → check disallowed paths. `package.json` → search for vulnerable packages. `.git/HEAD` → download the repo with git-dumper.
