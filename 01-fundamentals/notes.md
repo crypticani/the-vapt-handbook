@@ -1,13 +1,36 @@
 # 01 — Fundamentals: Core Concepts & Attacker Thinking
 
-> Before you exploit anything, you need to understand how the web works at the wire level. This isn't theory for theory's sake — every concept here maps directly to an attack vector.
+Use this as a live-testing reminder for how requests, responses, and inputs become findings.
 
-> 📋 **What You Will Do In This Section**
-> - [ ] Understand the full HTTP request lifecycle and identify every attack surface
-> - [ ] Decode a JWT token from Juice Shop and identify its structure
-> - [ ] Analyze HTTP responses to extract technology stack intel
-> - [ ] Map user input to vulnerability classes (the "Follow The Data" skill)
-> - [ ] Complete the Pre-Engagement Checklist for your Juice Shop lab
+## Quick Reference
+
+HTTP attack checklist:
+- [ ] Capture the request
+- [ ] Identify method, path, headers, cookies, body
+- [ ] Change one field at a time
+- [ ] Replay and compare
+- [ ] Record the impact
+
+Response analysis checklist:
+- [ ] Status code
+- [ ] Response length
+- [ ] Redirect location
+- [ ] Error details
+- [ ] Cookies, tokens, roles, IDs
+
+Input tracing checklist:
+- [ ] Source: URL, body, cookie, header, upload
+- [ ] Sink: page, database, command, file, redirect, API call
+- [ ] Control: can you change it?
+- [ ] Impact: can it expose data, bypass auth, or execute logic?
+
+## Quick Mode
+
+- Every request field is input.
+- Every response leak is intelligence.
+- Every ID is an access-control test.
+- Every error is a backend clue.
+- Follow input until it hits a sink.
 
 ---
 
@@ -23,8 +46,7 @@ When a browser sends a request, here's what happens — and where you attack:
    DOM XSS    Client bypass       Header injection      WAF bypass        SSRF/IDOR      SQLi/CMDi    Info disclosure
 ```
 
-> 💡 **Why This Matters**
-> Every step in this chain is a potential attack point. Your job as a pentester is to intercept, modify, and replay traffic at EVERY stage. Tools like Burp Suite let you sit between steps 2 and 3, intercepting and modifying every request before it reaches the server.
+Quick mode: intercept, modify, replay, compare. Do not guess when you can observe traffic.
 
 ### HTTP Request Anatomy
 
@@ -42,7 +64,7 @@ Content-Length: 45
 {"username":"admin","password":"password123"}
 ```
 
-**Every single field above is an attack surface.** Let's break it down:
+Every field above is an attack surface:
 
 | Component | Attack Vectors |
 |-----------|---------------|

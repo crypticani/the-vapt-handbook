@@ -1,15 +1,38 @@
 # 01 — Fundamentals: Hands-On Labs
 
-> Every lab builds muscle memory. Don't skip any. The goal isn't to "complete" the lab — it's to understand what's happening at each step.
+Use these labs to build repeatable live-testing habits.
 
-> 📋 **What You Will Do In This Section**
-> - [ ] Intercept and fully analyze a login request in Burp Suite
-> - [ ] Map all input points of Juice Shop (15+ endpoints)
-> - [ ] Modify and replay HTTP requests to test for vulnerabilities
-> - [ ] Extract server intelligence from HTTP responses
-> - [ ] Decode and attack JWT session tokens
-> - [ ] Bypass DVWA defenses at Low, Medium, and High difficulty
-> - [ ] Build a Python HTTP security analyzer script
+## Quick Reference
+
+HTTP attack checklist:
+- [ ] Capture a real request
+- [ ] Send it to Repeater
+- [ ] Modify one value
+- [ ] Compare response
+- [ ] Save evidence
+
+Response analysis checklist:
+- [ ] Status code
+- [ ] Length
+- [ ] Error message
+- [ ] Auth/session change
+- [ ] New data exposure
+
+Input tracing checklist:
+- [ ] Find all user-controlled fields
+- [ ] Map each field to endpoint and method
+- [ ] Test reflection, storage, query use, and auth decisions
+- [ ] Record likely vulnerability class
+
+## Quick Mode
+
+- Lab 1: learn request capture.
+- Lab 2: map inputs.
+- Lab 3: replay payloads.
+- Lab 4: read responses.
+- Lab 5: inspect tokens.
+- Lab 6: compare defenses.
+- Lab 7: automate checks.
 
 ---
 

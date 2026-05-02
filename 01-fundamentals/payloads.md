@@ -1,19 +1,44 @@
 # 01 — Fundamentals: Payloads
 
-> These are your "first-touch" payloads — the ones you use to detect if a vulnerability exists before escalating to full exploitation. Think of them as litmus tests.
+These are first-touch payloads for detection. Use them to create observable differences before escalating.
 
-> 📋 **What You Will Do In This Section**
-> - [ ] Understand detection payloads vs exploitation payloads
-> - [ ] Test each payload category against Juice Shop or DVWA
-> - [ ] Document which payloads trigger errors, different responses, or execution
-> - [ ] Build your own "go-to" payload cheatsheet
+## Quick Reference
+
+HTTP attack checklist:
+- [ ] Start with safe detection payload
+- [ ] Send baseline request first
+- [ ] Send payload request second
+- [ ] Compare status, size, time, and body
+- [ ] Confirm before exploiting
+
+Response analysis checklist:
+- [ ] SQL error or 500
+- [ ] Different true/false response size
+- [ ] Reflected HTML or JavaScript
+- [ ] Time delay
+- [ ] External callback
+
+Input tracing checklist:
+- [ ] Identify parameter context
+- [ ] Choose payload for that context
+- [ ] Encode if needed
+- [ ] Repeat in Burp Repeater
+- [ ] Document exact request and response
+
+## Quick Mode
+
+- SQLi: `'`, true/false, time delay.
+- XSS: `<b>test</b>`, then context payload.
+- CMDi: `; id`, then time delay.
+- SSTI: `{{7*7}}`.
+- LFI: `../../../etc/passwd`.
+- SSRF: callback URL.
 
 ---
 
 ## 🔴 Detection Payloads (Use These First)
 
-> 💡 **Why This Matters**
-> Detection payloads answer one question: "Is this parameter vulnerable?" They're designed to cause an observable difference (error, delay, different output) without doing damage. Always detect before exploit — it saves time and avoids noise.
+Detection payloads answer one question: did my input change server behavior?
 
 ### SQL Injection Detection
 

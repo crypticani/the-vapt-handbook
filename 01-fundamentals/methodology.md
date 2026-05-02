@@ -1,20 +1,40 @@
 # 01 — Fundamentals: Methodology
 
-> This is your pre-engagement and assessment kickoff workflow. Follow this BEFORE touching any target.
+Use this before touching a target. Keep it open during live testing.
 
-> 📋 **What You Will Do In This Section**
-> - [ ] Complete a pre-engagement authorization checklist
-> - [ ] Set up your testing environment with verified tool checks
-> - [ ] Perform initial target profiling (technology stack, attack surface)
-> - [ ] Establish a baseline of "normal" behavior for your target
-> - [ ] Create a structured testing plan prioritized by impact
+## Quick Reference
+
+HTTP attack checklist:
+- [ ] Capture request in Burp or `curl -v`
+- [ ] Change method, path, headers, cookies, and body
+- [ ] Replay with one change at a time
+- [ ] Compare status, length, headers, and body
+- [ ] Save working evidence
+
+Response analysis checklist:
+- [ ] Status code changed
+- [ ] Response length changed
+- [ ] Error leaked stack, SQL, path, user, or framework
+- [ ] Auth state changed
+- [ ] New data, role, token, or redirect appeared
+
+Input tracing checklist:
+- [ ] Identify every parameter, header, cookie, and JSON field
+- [ ] Find where input is reflected, stored, queried, or executed
+- [ ] Test the same input in browser, Burp Repeater, and `curl`
+- [ ] Map input to likely bug class: SQLi, XSS, IDOR, SSRF, CMDi, upload
+
+## Quick Mode
+
+- Confirm scope before traffic.
+- Verify tools before testing.
+- Capture normal behavior first.
+- Test high-impact inputs first: login, search, upload, IDs, redirects, APIs.
+- Document command, request, response, and conclusion.
 
 ---
 
 ## 🔴 Pre-Engagement Workflow
-
-> 💡 **Why This Matters**
-> Professional pentesting is NOT "start scanning and see what happens." It's a structured process with legal, technical, and procedural steps. Skipping pre-engagement leads to scope creep (testing things you're not authorized to test), missed findings (no structure = random testing), and legal risk (no authorization = crime).
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -101,8 +121,7 @@ Signature: ___________
 Date: ___________
 ```
 
-> 💡 **Why This Matters**
-> Without this document, you are committing a crime. With it, you have legal protection and clear boundaries. Real pentesters never start without a signed authorization document — no exceptions.
+Use written authorization as your boundary. If it is not in scope, do not test it.
 
 #### 🧪 Try It Now — Fill Out Authorization for Juice Shop
 
@@ -121,9 +140,23 @@ Date: ___________
 > ✅ **Expected Output**
 > A completed document that you can reference. This builds the habit — on a real engagement, you'll do this automatically.
 
+### Quick Mode
+
+- Scope answers what you can touch.
+- Rules answer how hard you can test.
+- Contacts answer who to call if something breaks.
+- Testing window answers when traffic is allowed.
+
 ---
 
 ## 🔴 Phase 2: Environment Setup Verification
+
+### Quick Mode
+
+- Run the tool check.
+- Fix missing tools before testing.
+- Confirm lab or target returns an HTTP response.
+- Keep Burp, terminal, browser, and notes open.
 
 ### Tool Verification Script
 
@@ -190,6 +223,13 @@ echo "DVWA:       $(curl -s -o /dev/null -w '%{http_code}' http://localhost 2>/d
 ---
 
 ## 🔴 Phase 3: Target Profiling
+
+### Quick Mode
+
+- Headers identify stack.
+- Status codes identify control points.
+- Response sizes identify anomalies.
+- Entry points become your test queue.
 
 ### Step 1: Technology Fingerprinting
 
@@ -392,3 +432,22 @@ Before moving to `02-recon/`, verify you can:
 - [ ] Explain the difference between detection and exploitation payloads
 - [ ] Complete a pre-engagement authorization document
 - [ ] Create a prioritized test plan for a target application
+
+---
+
+## Next: 02-Recon
+
+Fundamentals apply directly in recon:
+
+- HTTP basics help you read headers, redirects, cookies, and API behavior.
+- Response analysis helps you spot technology leaks, auth boundaries, and hidden paths.
+- Input tracing helps you decide which discovered endpoints are worth testing first.
+- Baselines help you separate real findings from scanner noise.
+
+Go to `02-recon/` next and use this loop:
+
+```text
+Discover target -> read responses -> map inputs -> prioritize attack surface
+```
+
+Start with `02-recon/methodology.md`.

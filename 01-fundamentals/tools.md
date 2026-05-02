@@ -1,20 +1,42 @@
 # 01 — Fundamentals: Tools & Real Usage
 
-> Tools are extensions of your skill, not replacements. Learn what each tool does manually first, then automate.
+Tools answer questions. Use them to capture, replay, compare, and document.
 
-> 📋 **What You Will Do In This Section**
-> - [ ] Install and configure Burp Suite for intercepting traffic
-> - [ ] Use curl to craft and send custom HTTP requests
-> - [ ] Run Nmap to scan Juice Shop and interpret the results
-> - [ ] Use ffuf to discover hidden directories and files
-> - [ ] Use Developer Tools (F12) to inspect client-side security
+## Quick Reference
+
+HTTP attack checklist:
+- [ ] Burp: capture and replay
+- [ ] `curl`: reproduce the request
+- [ ] Browser DevTools: inspect client-side state
+- [ ] `ffuf`: discover hidden paths
+- [ ] Nmap: confirm exposed services
+
+Response analysis checklist:
+- [ ] Use Burp history for status and length
+- [ ] Use `curl -i` or `curl -sI` for headers
+- [ ] Use Repeater to compare baseline vs payload
+- [ ] Use DevTools for cookies, local storage, JS, and network calls
+
+Input tracing checklist:
+- [ ] Send request to Repeater
+- [ ] Mark controllable inputs
+- [ ] Test one input at a time
+- [ ] Watch response differences
+- [ ] Promote interesting requests to notes
+
+## Quick Mode
+
+- Burp for manual testing.
+- `curl` for fast reproduction.
+- Nmap for exposed ports.
+- `ffuf` for hidden content.
+- DevTools for browser-side state.
 
 ---
 
 ## 🔴 Burp Suite (Your Primary Weapon)
 
-> 💡 **Why This Matters**
-> Burp Suite sits between your browser and the target, letting you see, modify, and replay every request. 90% of web pentesting happens in Burp. It's the single most important tool you'll use.
+Burp is the main loop: capture request, send to Repeater, change input, compare response.
 
 ### Installation
 ```bash
