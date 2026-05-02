@@ -1,532 +1,571 @@
-# 02 — Recon & Enumeration: Methodology
+# 02 - Recon & Enumeration: Methodology
 
-> This is your step-by-step recon methodology. Follow this for every engagement.
+Goal: move from an approved target to a usable attack surface map.
 
-> 📋 **What You Will Do In This Section**
-> - [ ] Define scope and boundaries before scanning
-> - [ ] Execute a complete 4-phase recon workflow
-> - [ ] Build a passive recon report with technology stack and OSINT findings
-> - [ ] Validate subdomains and scan for live services
-> - [ ] Create a prioritized attack surface map
+Pressure checklist:
 
----
+- [ ] fast scan
+- [ ] full scan
+- [ ] service enum
+- [ ] web enum
+- [ ] attack surface notes
 
-## 🔴 The Recon Framework
+Core flow:
 
-> 💡 **Why This Matters**
-> Without a structured methodology, you'll miss things. This framework ensures you check every data source, scan every port, and map every entry point — in a consistent, repeatable order. Real pentesters follow this for EVERY engagement, not just the first time.
+1. Run fast scan
+2. Run detailed scan
+3. Identify services
+4. Enumerate each service
+5. Build attack surface
 
-```
-┌─────────────────────────────────────────────────┐
-│               RECONNAISSANCE                     │
-│                                                  │
-│  Phase 1: SCOPE DEFINITION                      │
-│  ├── Define targets                              │
-│  ├── Set boundaries                              │
-│  └── Choose approach                             │
-│                                                  │
-│  Phase 2: PASSIVE RECON                         │
-│  ├── Domain intelligence                         │
-│  ├── OSINT gathering                             │
-│  ├── Technology detection                        │
-│  └── Historical analysis                         │
-│                                                  │
-│  Phase 3: ACTIVE RECON                          │
-│  ├── Subdomain enumeration                       │
-│  ├── Port scanning                               │
-│  ├── Service identification                      │
-│  └── Web content discovery                       │
-│                                                  │
-│  Phase 4: ATTACK SURFACE MAPPING                │
-│  ├── Entry points catalog                        │
-│  ├── Technology → CVE mapping                    │
-│  ├── Priority ranking                            │
-│  └── Attack plan creation                        │
-└─────────────────────────────────────────────────┘
-```
+Use this workflow only against systems you are authorized to test.
 
 ---
 
-## 🔴 Phase 1: Scope Definition (15 minutes)
+## Pressure Workflow
 
-> 💡 **Why This Matters**
-> Scope is your legal protection. Testing something outside scope can end your career and land you in court. Define it clearly BEFORE running a single command. This also prevents wasted effort — there's no point scanning a CDN you can't bypass.
+When time is limited, chain the workflow and make decisions from output.
 
-### Inputs
-- Target domain(s) or IP range(s)
-- Rules of Engagement document
-- Any exclusions or restrictions
+```bash
+TARGET=10.10.10.10
 
-### Process
+# 1. Fast scan: find obvious ports
+nmap -T4 -F "$TARGET" -oA scans/fast
 
-```markdown
-## Scope Document
+# 2. If open ports exist, run full TCP scan
+nmap -p- -T4 "$TARGET" -oA scans/full
 
-### Target: example.com
-
-### What I'm testing:
-- [ ] Main domain: example.com
-- [ ] All subdomains: *.example.com
-- [ ] IP range: 104.26.10.0/24
-- [ ] API: api.example.com
-
-### What I'm NOT testing:
-- Third-party services (Stripe, Intercom, etc.)
-- Partner/vendor domains
-- Specific IPs: 104.26.10.5 (shared hosting — other clients)
-
-### Approach:
-- [ ] Black box (no credentials, no insider info)
-- [ ] Gray box (limited credentials, some documentation)
-- [ ] White box (full access, source code, documentation)
+# 3. Extract open ports and run service detection
+PORTS=$(grep -oP '\d+/open' scans/full.gnmap | cut -d/ -f1 | paste -sd, -)
+nmap -sC -sV -p "$PORTS" "$TARGET" -oA scans/detailed
 ```
 
-#### 🧪 Try It Now — Scope Your Juice Shop Engagement
-
-```markdown
-## My Scope Document
-
-### Target: Juice Shop Lab
-- URL: http://localhost:3000
-- Scope: All endpoints on localhost:3000
-- Authorization: Self-hosted lab (full authorization)
-- Approach: Black box (no insider knowledge)
-- Exclusions: None (it's our lab)
-- Time: Unlimited
-```
-
-> ✅ **Expected Output**
-> A completed scope document. On real engagements, this would be signed by the client and include legal language.
+Decision rule:
+- No open ports in fast scan -> still run full scan if the host is in scope.
+- Open web port -> start web enum immediately while full scan runs.
+- Unknown service -> banner grab and run targeted Nmap scripts.
 
 ---
 
-## 🔴 Phase 2: Passive Reconnaissance (1-2 hours)
+## 1. Target Discovery
 
-### Step 2.1: Domain Intelligence
-
-```bash
-# DNS Records (complete)
-dig target.com A AAAA MX NS TXT SOA CNAME +noall +answer
-
-# WHOIS
-whois target.com | grep -iE "registrant|admin|tech|email|created|updated|expires|name.server"
-
-# Reverse WHOIS (find other domains owned by same entity)
-# Use: https://viewdns.info/reversewhois/
-
-# ASN lookup (find all IP ranges owned by the org)
-# Use: https://bgp.he.net/
-whois -h whois.radb.net -- '-i origin AS12345'
-```
-
-#### 🧪 Try It Now — Domain Intelligence
+Start by confirming what is alive. Do this before heavy scanning so you do not waste time on dead hosts.
 
 ```bash
-TARGET="hackerone.com"
-echo "=== WHOIS Summary ==="
-whois $TARGET 2>/dev/null | grep -iE "registrant|created|updated|expires|name.server" | head -10
+# Single host
+ping -c 2 10.10.10.10
 
-echo ""
-echo "=== DNS Summary ==="
-echo "A:  $(dig +short $TARGET A | head -2 | tr '\n' ', ')"
-echo "MX: $(dig +short $TARGET MX | head -2 | tr '\n' ', ')"
-echo "NS: $(dig +short $TARGET NS | head -2 | tr '\n' ', ')"
+# Network sweep
+nmap -sn 10.10.10.0/24 -oA scans/discovery
+
+# Local network ARP discovery
+sudo nmap -sn -PR 192.168.1.0/24 -oA scans/arp-discovery
 ```
 
-> ✅ **Expected Output**
-> ```
-> === WHOIS Summary ===
-> Creation Date: 2011-...
-> Updated Date: 2024-...
-> Name Server: ns1.p16.dynect.net
->
-> === DNS Summary ===
-> A:  104.16.100.52, 104.16.99.52,
-> MX: 1 aspmx.l.google.com., 5 alt1.aspmx.l.google.com.,
-> NS: ns1.p16.dynect.net., ns2.p16.dynect.net.,
-> ```
+Reasoning:
+- `-sn` performs host discovery without port scanning.
+- ARP discovery is reliable on local networks because firewalls often block ICMP but still respond to ARP.
+- Save output with `-oA` so you have normal, grepable, and XML formats.
 
-> 🔧 **If Stuck**
-> - `whois: command not found` → `sudo apt install whois -y`
-> - WHOIS returns "REDACTED" → Many domains use WHOIS privacy now. Check https://viewdns.info for historical WHOIS.
-
-### Step 2.2: Subdomain Discovery (Passive Only)
+Create a live-host list:
 
 ```bash
-# Certificate Transparency
-curl -s "https://crt.sh/?q=%25.target.com&output=json" | jq -r '.[].name_value' | sort -u > subs_crtsh.txt
-
-# subfinder (uses multiple APIs)
-subfinder -d target.com -silent > subs_subfinder.txt
-
-# SecurityTrails (API)
-# https://securitytrails.com/domain/target.com/dns
-
-# VirusTotal
-# https://www.virustotal.com/gui/domain/target.com/relations
-
-# Combine all
-cat subs_*.txt | sort -u > all_subs_passive.txt
+grep "Up" scans/discovery.gnmap | cut -d " " -f2 > live-hosts.txt
 ```
-
-### Step 2.3: Technology Detection
-
-```bash
-# Quick fingerprint
-whatweb -q target.com
-curl -sI target.com | grep -iE "^(server|x-powered|set-cookie|x-frame)"
-
-# Browser: Install Wappalyzer extension and visit target
-```
-
-### Step 2.4: OSINT Deep Dive
-
-```bash
-# Google dorking (dedicate 30 minutes to this)
-# Run each query and document interesting results:
-# site:target.com filetype:sql|bak|log|env|config
-# site:target.com inurl:admin|login|dashboard|portal
-# site:target.com intitle:"index of"
-# site:*.target.com -www
-# "target.com" site:github.com password|token|secret
-# "target.com" site:pastebin.com
-
-# Wayback Machine
-echo target.com | waybackurls > wayback.txt
-cat wayback.txt | grep -iE '\.(bak|sql|zip|env|log|config|xml|json)$'
-cat wayback.txt | grep '?' | sort -u > params.txt
-
-# Shodan
-shodan host $(dig +short target.com | head -1)
-```
-
-### Step 2.5: GitHub/Source Leak Hunt
-
-```bash
-# Search on GitHub:
-# "target.com" password
-# "target.com" api_key secret
-# "@target.com" (employee accounts)
-# org:target-company filename:.env
-# org:target-company filename:wp-config
-
-# Check for exposed .git
-curl -s https://target.com/.git/HEAD
-# If "ref: refs/heads/main" → .git exposed, use git-dumper
-
-# Check for exposed .env
-curl -s https://target.com/.env
-```
-
-### Deliverable: Passive Recon Report
-
-```markdown
-## Passive Recon Summary
-
-### Technology Stack
-- Server: Nginx 1.18
-- Framework: Node.js + Express
-- Frontend: React
-- CDN: Cloudflare
-- Email: Google Workspace (via SPF)
-
-### Subdomains (Passive)
-Total: 47 unique subdomains
-Interesting:
-- staging.target.com
-- api-old.target.com
-- jenkins.target.com
-
-### Potential Secrets Found
-- GitHub: API key found in commit abc123 by @employee
-- Wayback: /config/database.yml exposed (now 404)
-- Pastebin: Employee credentials posted 6 months ago
-
-### Attack Vectors Identified
-1. staging.target.com → likely weaker security
-2. jenkins.target.com → default credentials?
-3. api-old.target.com → deprecated API, missing patches?
-4. DMARC policy = none → email spoofing possible
-```
-
-> ✅ **Expected Output**
-> A completed report like above. On real engagements, this report goes into your final deliverable and shows the client how much information is publicly available about them.
 
 ---
 
-## 🔴 Phase 3: Active Reconnaissance (2-4 hours)
+## 2. Run Fast Scan
 
-> 💡 **Why This Matters**
-> Active recon directly interacts with the target — port scanning, brute forcing directories, probing services. It's more revealing than passive recon but leaves traces in logs. Execute this phase after passive recon has narrowed your focus.
-
-### Step 3.1: Subdomain Validation & Expansion
+The fast scan finds obvious entry points quickly. It answers: "What should I inspect first?"
 
 ```bash
-# Active brute force
-gobuster dns -d target.com \
-  -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-110000.txt \
-  -t 50 > subs_brute.txt
+# Fast built-in scan
+nmap -T4 -F 10.10.10.10 -oA scans/fast-F
 
-# Combine with passive results
-cat all_subs_passive.txt subs_brute.txt | sort -u > all_subs.txt
+# Fast TCP scan against one host
+sudo nmap -sS -T4 --top-ports 1000 10.10.10.10 -oA scans/fast
 
-# Resolve and find live hosts
-cat all_subs.txt | httpx -silent -status-code -title -tech-detect -follow-redirects > live_hosts.txt
+# Fast scan against multiple hosts
+sudo nmap -sS -T4 --top-ports 1000 -iL live-hosts.txt -oA scans/fast-all
 ```
 
-### Step 3.2: Port Scanning
+Reasoning:
+- `-sS` is a SYN scan and is fast when run as root.
+- `-T4` is suitable for labs and stable networks.
+- Top ports quickly reveal common services such as SSH, HTTP, SMB, RDP, and databases.
+- `-F` scans fewer ports than the default scan. Use it for first contact, not final coverage.
+
+If the target blocks ping:
 
 ```bash
-# Extract unique IPs from resolved subdomains
-cat all_subs.txt | while read sub; do
-  dig +short $sub | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
-done | sort -u > target_ips.txt
-
-# Quick scan (top 1000 ports)
-nmap -sS -T4 -iL target_ips.txt -oA nmap_quick
-
-# Full port scan on interesting hosts
-nmap -sS -p- --min-rate 5000 <interesting_IP> -oA nmap_full_<hostname>
-
-# Deep service scan on all open ports
-nmap -sV -sC -p <open_ports> <interesting_IP> -oA nmap_deep_<hostname>
-
-# UDP scan
-sudo nmap -sU --top-ports 50 -T4 <interesting_IP> -oA nmap_udp_<hostname>
+sudo nmap -Pn -sS -T4 --top-ports 1000 10.10.10.10 -oA scans/fast-pn
 ```
 
-#### 🧪 Try It Now — Active Recon on Juice Shop
+Reasoning:
+- `-Pn` treats the host as alive. Use it when a host is in scope but does not respond to host discovery.
+
+---
+
+## 3. Scan Strategy
+
+Use scanning in layers. Each scan answers a different question.
+
+### Time-Based Strategy
+
+Quick recon for CTF or time-limited testing:
+- Run `nmap -T4 -F`.
+- Run `nmap -sC -sV` on open ports.
+- If HTTP is open, run `whatweb`, `ffuf`, and login/API checks.
+- Run full scan in the background if time allows.
+
+Deep recon for real engagements:
+- Confirm live hosts.
+- Run fast scan, full TCP scan, detailed service scan, and UDP scan.
+- Enumerate every open service, including non-standard ports.
+- Validate scanner findings manually before exploitation.
+
+### Fast Scan
 
 ```bash
-echo "=== Port Scan ==="
-nmap -sV -p 3000 localhost 2>/dev/null | grep "open"
+nmap -T4 -F 10.10.10.10 -oA scans/fast
+```
 
-echo ""
-echo "=== Directory Discovery ==="
-ffuf -u http://localhost:3000/FUZZ \
-  -w /usr/share/seclists/Discovery/Web-Content/common.txt \
-  -mc 200,301,302 -t 20 -s 2>/dev/null | head -10
+Use when:
+- You need a first look within seconds.
+- You are triaging many hosts.
+- You want to identify obvious web, SSH, SMB, RDP, or database exposure.
 
-echo ""
-echo "=== Sensitive Files ==="
-for path in .git/HEAD .env robots.txt sitemap.xml .well-known/security.txt package.json; do
-  code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000/$path")
-  [ "$code" != "404" ] && echo "  ⚠️  $path → $code"
+Do not stop here. `-F` intentionally skips many ports.
+
+### Full Scan
+
+```bash
+nmap -p- -T4 10.10.10.10 -oA scans/full
+```
+
+Use when:
+- The host is confirmed alive.
+- The fast scan is complete.
+- You need confidence that services are not hiding on high ports.
+
+This scan finds ports such as `8080`, `8443`, `9000`, `10000`, and custom admin services that default scans often miss.
+
+### Detailed Scan
+
+```bash
+nmap -sC -sV -p 22,80,443,8080 10.10.10.10 -oA scans/detailed
+```
+
+Use when:
+- You already know which ports are open.
+- You need service versions, default script output, titles, headers, host keys, or SMB metadata.
+- You are preparing service-specific enumeration.
+
+Run detailed scans against open ports only. It is faster, cleaner, and less noisy.
+
+---
+
+## Output Interpretation
+
+Read scan output as instructions for the next command.
+
+```text
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.2p1 Ubuntu
+80/tcp open  http    Apache httpd 2.4.54
+443/tcp open ssl/http nginx
+```
+
+Actions:
+- `PORT 80 open` -> HTTP found -> run `whatweb`, `curl -i`, `ffuf`, and check login/API paths.
+- `PORT 443 open` -> HTTPS found -> inspect certificate, headers, redirects, and run web enum.
+- `PORT 22 open` -> OpenSSH found -> check version, auth methods, weak/default creds only if allowed.
+- `unknown open` -> run `nmap -sV --version-all`, banner grab with `nc`, and test if it speaks HTTP/TLS.
+
+Example:
+
+```bash
+# 80/tcp open http
+whatweb http://10.10.10.10/
+ffuf -u http://10.10.10.10/FUZZ -w /usr/share/wordlists/dirb/common.txt -mc all -fc 404
+
+# 22/tcp open ssh
+nmap -sV --script ssh2-enum-algos,ssh-hostkey -p 22 10.10.10.10
+
+# 9999/tcp open unknown
+nmap -sV --version-all -p 9999 10.10.10.10
+nc -nv 10.10.10.10 9999
+```
+
+---
+
+## 4. Run Detailed Scan
+
+After the fast scan, scan every TCP port. Do not assume closed top ports means the host has no attack surface.
+
+```bash
+# Full TCP port scan
+sudo nmap -sS -p- --min-rate 5000 10.10.10.10 -oA scans/full-tcp
+```
+
+Extract open ports:
+
+```bash
+grep -oP '\d+/open' scans/full-tcp.gnmap | cut -d/ -f1 | paste -sd, -
+```
+
+Run service detection only against open ports:
+
+```bash
+PORTS="22,80,443,445,8080"
+nmap -sV -sC -p "$PORTS" 10.10.10.10 -oA scans/services
+```
+
+Reasoning:
+- Full-port scan finds services moved to non-standard ports.
+- `-sV` fingerprints service versions.
+- `-sC` runs safe default NSE scripts for useful metadata.
+- Running scripts only on open ports is faster and cleaner.
+
+Add UDP coverage:
+
+```bash
+sudo nmap -sU --top-ports 20 10.10.10.10 -oA scans/udp-top20
+sudo nmap -sU -p 53,67,68,69,123,135,137,138,161,162,500,514,520,1900 10.10.10.10 -oA scans/udp-targeted
+```
+
+Reasoning:
+- UDP is slow, but missing UDP means missing DNS, SNMP, TFTP, NTP, and VPN services.
+- Start with top UDP ports, then expand when the environment suggests it.
+
+---
+
+## 5. Identify Services
+
+Convert scan output into a service table.
+
+```text
+Host          Port    Service    Version              Notes
+10.10.10.10   22/tcp  ssh        OpenSSH 7.2p2         Check auth policy, weak creds if allowed
+10.10.10.10   80/tcp  http       Apache 2.4.18         Enumerate web app
+10.10.10.10   445/tcp smb        Samba 4.x             Enumerate shares/users
+```
+
+Confirm uncertain services manually:
+
+```bash
+nc -nv 10.10.10.10 22
+curl -i http://10.10.10.10/
+openssl s_client -connect 10.10.10.10:443 -servername target.local
+```
+
+Reasoning:
+- Nmap guesses can be wrong on custom services.
+- Manual banner grabbing verifies what the scanner reports.
+- Version strings guide CVE research, but never exploit from version alone.
+
+---
+
+## 6. Enumerate Each Service
+
+### SSH - 22/tcp
+
+```bash
+nmap -sV --script ssh2-enum-algos,ssh-hostkey -p 22 10.10.10.10 -oA scans/ssh
+nc -nv 10.10.10.10 22
+```
+
+Look for:
+- Product and version
+- Password authentication enabled
+- Weak algorithms
+- Reused hostnames or usernames from other services
+
+Do not brute force unless the rules of engagement allow it.
+
+### HTTP/HTTPS - 80, 443, 8080, 8443
+
+```bash
+whatweb http://10.10.10.10
+curl -i http://10.10.10.10/
+nmap --script http-title,http-headers,http-methods -p 80,443,8080 10.10.10.10 -oA scans/http
+```
+
+Directory fuzzing:
+
+```bash
+ffuf -u http://10.10.10.10/FUZZ \
+  -w /usr/share/wordlists/dirb/common.txt \
+  -mc all -fc 404 \
+  -o scans/ffuf-common.json
+
+gobuster dir -u http://10.10.10.10/ \
+  -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt \
+  -x php,txt,bak,zip,old \
+  -o scans/gobuster-dir.txt
+```
+
+Reasoning:
+- Headers and titles reveal frameworks, servers, and redirects.
+- Fuzzing finds hidden panels, backups, APIs, and static files.
+- Extensions matter on PHP, IIS, Java, and legacy applications.
+
+### SMB - 139/445
+
+```bash
+nmap --script smb-os-discovery,smb-enum-shares,smb-enum-users -p 139,445 10.10.10.10 -oA scans/smb
+smbclient -L //10.10.10.10/ -N
+enum4linux-ng -A 10.10.10.10
+```
+
+Look for:
+- Anonymous shares
+- Writable shares
+- Usernames
+- Host/domain name
+- Old SMB versions
+
+### FTP - 21/tcp
+
+```bash
+nmap --script ftp-anon,ftp-syst,ftp-bounce -p 21 10.10.10.10 -oA scans/ftp
+ftp 10.10.10.10
+```
+
+Look for:
+- Anonymous login
+- Writable directories
+- Backup files
+- Application source code
+
+### DNS - 53/tcp or 53/udp
+
+```bash
+dig @10.10.10.10 target.local A
+dig @10.10.10.10 target.local AXFR
+nmap --script dns-zone-transfer,dns-nsid -p 53 10.10.10.10 -oA scans/dns
+```
+
+Look for:
+- Zone transfer
+- Internal hostnames
+- Subdomains
+- Split-horizon DNS leaks
+
+### SNMP - 161/udp
+
+```bash
+sudo nmap -sU --script snmp-info,snmp-interfaces,snmp-processes -p 161 10.10.10.10 -oA scans/snmp
+snmpwalk -v2c -c public 10.10.10.10
+```
+
+Look for:
+- Default community strings
+- Running processes
+- Network interfaces
+- Installed software
+- Usernames
+
+### Databases
+
+```bash
+# MySQL
+nmap --script mysql-info,mysql-empty-password -p 3306 10.10.10.10 -oA scans/mysql
+
+# PostgreSQL
+nmap --script pgsql-brute -p 5432 10.10.10.10 -oA scans/postgres
+
+# MSSQL
+nmap --script ms-sql-info,ms-sql-empty-password -p 1433 10.10.10.10 -oA scans/mssql
+```
+
+Look for:
+- Exposed databases
+- Empty/default passwords
+- Version-specific weaknesses
+- Database names leaked in banners or errors
+
+---
+
+## 7. Web Enumeration Workflow
+
+Run this for every HTTP service, including non-standard ports.
+
+```bash
+URL="http://10.10.10.10:8080"
+
+whatweb "$URL"
+curl -i "$URL"
+curl -s "$URL/robots.txt"
+nikto -h "$URL" -output scans/nikto-8080.txt
+ffuf -u "$URL/FUZZ" -w /usr/share/wordlists/dirb/common.txt -mc all -fc 404
+```
+
+Then check common high-value paths:
+
+```bash
+for path in robots.txt sitemap.xml .git/HEAD .env backup.zip admin login api swagger.json openapi.json; do
+  curl -s -o /dev/null -w "%{http_code} %{size_download} $path\n" "$URL/$path"
 done
 ```
 
-> ✅ **Expected Output**
-> ```
-> === Port Scan ===
-> 3000/tcp open  http    Node.js Express framework
->
-> === Directory Discovery ===
-> assets
-> ftp
-> profile
-> robots.txt
->
-> === Sensitive Files ===
->   ⚠️  robots.txt → 200
->   ⚠️  package.json → 200
-> ```
+Reasoning:
+- `robots.txt` and `sitemap.xml` expose intended and hidden routes.
+- `.git`, `.env`, backups, and API docs are high-value findings.
+- Status code and response size help separate real content from soft 404s.
 
-### Step 3.3: Web Content Discovery
+---
 
-```bash
-# For each live web host:
-for url in $(cat live_hosts.txt | awk '{print $1}'); do
-  host=$(echo $url | sed 's|https\?://||' | sed 's|/.*||')
-  echo "[*] Scanning $url"
-  
-  # Directory brute force
-  ffuf -u "$url/FUZZ" \
-    -w /usr/share/seclists/Discovery/Web-Content/raft-large-words.txt \
-    -mc 200,301,302,401,403 \
-    -t 50 -rate 100 \
-    -o "ffuf_${host}.json" -of json 2>/dev/null
-    
-  # Check for sensitive files
-  for path in .git/HEAD .env robots.txt sitemap.xml .well-known/security.txt; do
-    code=$(curl -s -o /dev/null -w "%{http_code}" "$url/$path")
-    if [ "$code" != "404" ] && [ "$code" != "000" ]; then
-      echo "  [!] $path → HTTP $code"
-    fi
-  done
-done
+## Decision Trees
+
+```text
+IF port 80/443 open
+  -> fingerprint with whatweb and curl
+  -> check robots.txt, sitemap.xml, headers
+  -> run ffuf for hidden directories and files
+     ffuf -u http://TARGET/FUZZ -w /usr/share/wordlists/dirb/common.txt -mc all -fc 404
+  -> check login panels
+     look for /login, /admin, /portal, /dashboard, /wp-admin, /manager
+  -> test APIs
+     look for /api, /api/v1, /swagger.json, /openapi.json, /graphql
+  -> capture technologies, endpoints, login flows, and API docs
 ```
 
-### Step 3.4: API Discovery
+```text
+IF SSH open
+  -> check version
+     nmap -sV -p 22 TARGET
+     nc -nv TARGET 22
+  -> check whether password auth is allowed
+  -> collect usernames from web/SMB/SNMP
+  -> test weak creds only if permitted
+     try known/default creds from the app, docs, or ROE-approved list
+  -> if creds work, document access level and move to post-auth enumeration
+```
 
-```bash
-# Check for API documentation
-for url in $(cat live_hosts.txt | awk '{print $1}'); do
-  for endpoint in /swagger.json /api-docs /swagger-ui.html /openapi.json /graphql /.well-known/openapi.json /v1/api-docs /v2/api-docs; do
-    code=$(curl -s -o /dev/null -w "%{http_code}" "$url$endpoint")
-    if [ "$code" == "200" ]; then
-      echo "[!] API docs found: $url$endpoint"
-    fi
-  done
-done
+```text
+IF unknown service open
+  -> run nmap version detection
+     nmap -sV --version-all -p PORT TARGET
+  -> use nmap scripts for that port/service family
+     nmap --script "default,safe" -p PORT TARGET
+  -> banner grab manually
+     nc -nv TARGET PORT
+     curl -i http://TARGET:PORT/     # if it might be HTTP
+     openssl s_client -connect TARGET:PORT
+  -> search the banner, protocol hints, and response format
+  -> do not ignore it just because nmap says unknown
+```
 
-# GraphQL introspection
-curl -s -X POST "$url/graphql" \
-  -H "Content-Type: application/json" \
-  -d '{"query":"{ __schema { types { name fields { name } } } }"}' | python3 -m json.tool
+```text
+IF SMB open
+  -> enumerate shares anonymously
+  -> enumerate users and OS
+  -> check readable/writable shares
+  -> download only scoped files needed for evidence
+```
+
+```text
+IF DNS open
+  -> query records
+  -> attempt zone transfer
+  -> add discovered hosts to target list
+  -> scan new hosts
+```
+
+```text
+IF SNMP open
+  -> try approved community strings
+  -> dump system, process, interface, and user data
+  -> use discovered hostnames/IPs to expand enumeration
 ```
 
 ---
 
-## 🔴 Phase 4: Attack Surface Mapping (30 minutes)
+## Build The Attack Surface
 
-> 💡 **Why This Matters**
-> This is your master document — the output of ALL your recon work, organized for exploitation. Without it, you'll forget findings, miss connections, and waste time retesting things. With it, you have a clear, prioritized plan of attack.
-
-### Build The Master Document
+Your final recon output should be actionable.
 
 ```markdown
-## Attack Surface Map
+## Attack Surface
 
-### Date: [DATE]
-### Target: target.com
-### Tester: [YOUR NAME]
+### Hosts
+- 10.10.10.10 - Linux host, web + SSH + SMB
+
+### Open Services
+- 22/tcp SSH OpenSSH 7.2p2
+- 80/tcp HTTP Apache 2.4.18
+- 445/tcp SMB Samba 4.x
+
+### Web Findings
+- /admin - login panel
+- /backup.zip - exposed backup
+- /api/swagger.json - API documentation
+
+### Credentials/Usernames
+- usernames: alice, bob, svc_backup
+- credential testing allowed: yes/no
+
+### Priority Targets
+1. Exposed backup file on HTTP
+2. Anonymous SMB share
+3. Outdated OpenSSH version
+
+### Next Exploitation Steps
+- Review backup contents for secrets
+- Test SMB write access
+- Search confirmed versions for known vulnerabilities
+```
 
 ---
 
-### Infrastructure Overview
-| Component | Details | Risk Level |
-|-----------|---------|------------|
-| Primary web | Nginx 1.18 + Express | Medium (known CVEs) |
-| API server | Node.js REST API | High (multiple endpoints) |
-| Database | MongoDB (error-based detection) | High (NoSQL injection) |
-| CDN | Cloudflare | Bypass needed |
-| CI/CD | Jenkins 2.x (exposed) | Critical |
+## Common Mistakes
 
-### Subdomain Analysis
-| Subdomain | Status | Technology | Priority | Notes |
-|-----------|--------|------------|----------|-------|
-| www.target.com | 200 | React SPA | Medium | Main app |
-| api.target.com | 200 | Express API | HIGH | 15 endpoints found |
-| staging.target.com | 200 | Same stack | CRITICAL | Debug mode, test creds? |
-| admin.target.com | 403 | Unknown | HIGH | Admin panel exists |
-| dev.target.com | NXDOMAIN | CNAME→Heroku | CRITICAL | Subdomain takeover! |
-| jenkins.target.com | 200 | Jenkins 2.289 | CRITICAL | Default creds? |
+- Scanning too fast and causing packet loss or unreliable results.
+- Trusting only the first Nmap scan.
+- Trusting default scan output as complete coverage.
+- Skipping the full port scan.
+- Missing UDP entirely.
+- Missing hidden directories because only the homepage was checked.
+- Ignoring services on non-standard ports.
+- Skipping manual banner verification.
+- Ignoring subdomains and virtual hosts.
+- Running directory fuzzing without filtering soft 404s.
+- Treating version numbers as proof of vulnerability.
+- Not saving scan output.
+- Not turning findings into a prioritized attack plan.
 
-### Entry Points (Prioritized)
-| # | URL | Method | Auth? | Input | Risk | Attack Vector |
-|---|-----|--------|-------|-------|------|---------------|
-| 1 | /api/login | POST | No | JSON body | High | SQLi, brute force |
-| 2 | /api/users/{id} | GET | JWT | Path param | High | IDOR |
-| 3 | /api/upload | POST | JWT | Multipart | Critical | RCE via file upload |
-| 4 | /api/search | GET | No | Query string | High | SQLi, XSS |
-| 5 | /api/webhook | POST | JWT | JSON (URL) | High | SSRF |
+---
 
-### Quick Wins To Try First
-1. Jenkins default credentials (admin:admin)
-2. Subdomain takeover on dev.target.com
-3. Staging environment — test credentials, debug mode
-4. API IDOR on /api/users/{id}
-5. SQLi on /api/search?q=
+## What Next
 
-### Tech → CVE Opportunities
-| Technology | Version | CVE | Impact |
-|------------|---------|-----|--------|
-| Nginx | 1.18.0 | CVE-2021-23017 | DNS resolver DoS |
-| Jenkins | 2.289 | CVE-2021-XXXXX | RCE |
-| Express | Unknown | Check for prototype pollution | DoS/RCE |
+Recon feeds exploitation by converting unknown targets into specific attack paths.
 
-### Recommended Testing Order
-1. 🔴 staging.target.com → Full app test (weakest target)
-2. 🔴 jenkins.target.com → Default creds → RCE
-3. 🔴 dev.target.com → Subdomain takeover
-4. 🟡 api.target.com → IDOR, injection testing
-5. 🟡 admin.target.com → 403 bypass
-6. 🟢 www.target.com → Standard web app test
-```
+Use recon findings to decide exploitation priorities:
+- Login panel found -> test default credentials, password policy, lockout behavior, and username enumeration if allowed.
+- API docs found -> map endpoints, auth requirements, object IDs, file upload routes, and admin-only actions.
+- Exposed backup or `.git` found -> inspect for credentials, source code, hidden routes, and deployment secrets.
+- SMB share found -> check read/write access, scripts, config files, and reusable credentials.
+- Confirmed vulnerable version found -> verify exploitability against the exact service, OS, and configuration.
 
-#### 🧪 Try It Now — Build Your Juice Shop Attack Surface Map
+Recon also feeds privilege escalation after initial access:
+- Service versions identify local exploit candidates.
+- Web config files reveal database credentials and internal hosts.
+- SMB/NFS shares reveal scripts, backups, and user files.
+- SNMP output can reveal processes, users, routes, and installed software.
+- Hostnames and domains guide lateral movement and internal enumeration.
+
+Good handoff format:
 
 ```markdown
-## Attack Surface Map: Juice Shop
-
-### Date: [TODAY]
-### Target: http://localhost:3000
-
-### Technology Stack
-| Layer | Technology | Source |
-|-------|-----------|--------|
-| Backend | Express (Node.js) | X-Powered-By header |
-| Database | SQLite | Error message |
-| Frontend | Angular | JavaScript analysis |
-| Auth | JWT (RS256) | Login response |
-| CORS | * (allow all) | Access-Control-Allow-Origin |
-
-### Entry Points (fill in from your Lab 2 results)
-| # | Endpoint | Method | Risk | Attack Vector |
-|---|----------|--------|------|---------------|
-| 1 | /rest/user/login | POST | High | SQLi (confirmed!) |
-| 2 | /rest/products/search?q= | GET | High | SQLi (confirmed!) |
-| 3 | /api/Users/ | GET/POST | High | IDOR, mass assignment |
-| 4 | /api/Feedbacks/ | POST | Medium | Stored XSS |
-| 5 | /rest/basket/{id} | GET | High | IDOR |
-| 6 | /ftp/ | GET | Medium | File disclosure |
-
-### Quick Wins
-1. SQLi on search → dump database
-2. IDOR on baskets → access other users' data
-3. /ftp/ → download exposed files
-4. JWT manipulation → escalate to admin
+## Ready For Exploitation
+- Target:
+- Confirmed entry point:
+- Evidence:
+- Required credentials:
+- Known users:
+- Relevant files/paths:
+- Risk:
+- Next command/test:
 ```
-
-> ✅ **Expected Output**
-> A completed attack surface map. This is your roadmap for `03-web-exploitation/`. Every exploit you'll run is targeting an entry point from this map.
-
----
-
-## 📋 Phase Completion Checklist
-
-```
-PHASE 1: SCOPE
-□ Scope document created
-□ Boundaries clearly defined
-□ Testing approach determined
-
-PHASE 2: PASSIVE RECON
-□ DNS records enumerated (all types)
-□ Subdomains discovered (crt.sh + subfinder + others)
-□ Technology stack identified
-□ Google dorking completed (15+ queries)
-□ GitHub/source code search done
-□ Wayback Machine analyzed
-□ WHOIS information gathered
-□ Shodan searched
-
-PHASE 3: ACTIVE RECON
-□ Subdomains validated and expanded (brute force)
-□ Live hosts identified (httpx)
-□ Full port scan completed (TCP + UDP)
-□ Service versions detected (nmap -sV)
-□ Directories/files enumerated (ffuf/gobuster)
-□ API documentation searched
-□ Virtual hosts checked
-□ Sensitive files checked (25+ paths)
-
-PHASE 4: ATTACK SURFACE MAP
-□ Infrastructure overview documented
-□ All subdomains categorized by priority
-□ Entry points cataloged with attack vectors
-□ Quick wins identified
-□ Technologies mapped to CVEs
-□ Testing order prioritized
-□ Ready for exploitation phase → 03-web-exploitation/
-```
-
----
-
-## 🧠 If You're Stuck
-
-1. **Don't know where to start Phase 2**: Start with DNS — `dig target.com A MX NS TXT +short`. Then crt.sh for subdomains. Then Google dorks. Follow the order above.
-2. **Phase 3 scan taking too long**: Prioritize. Quick port scan first (`--top-ports 100`), then full scan on interesting hosts only.
-3. **Can't build the attack surface map**: Use the template above. Fill in what you know, leave gaps for what you don't. The map improves as you test.
-4. **Findings seem overwhelming**: Focus on the Quick Wins section. Start with the easiest, highest-impact targets. On most engagements, 80% of findings come from 20% of the attack surface.
-5. **Not finding anything on passive recon**: Some targets have excellent security posture. That's OK — it means you focus more on application-level testing in Phase 3/4.
