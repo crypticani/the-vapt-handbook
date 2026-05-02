@@ -198,6 +198,58 @@ Each directory contains:
 
 ---
 
+## 🧭 How to Study Each Module
+
+Every module follows a structured learning flow. Follow this exact order:
+
+### 1. notes.md → Understand the WHY
+
+* Core concepts
+* Attacker mindset
+* Mental models
+
+### 2. methodology.md → Understand the HOW
+
+* Step-by-step workflow
+* Decision-making process
+* Attack flow
+
+### 3. tools.md → Learn the WITH WHAT
+
+* Commands
+* Tool usage
+* Practical execution
+
+### 4. labs.md → Build MUSCLE MEMORY
+
+* Hands-on labs
+* Practice scenarios
+* Real execution
+
+### 5. payloads.md → Sharpen the WEAPON
+
+* Detection payloads
+* Exploit patterns
+* When and how to use them
+
+---
+
+### 🔁 Learning Loop (IMPORTANT)
+
+After completing a module:
+
+* Revisit methodology.md
+* Revisit notes.md
+* Apply again in labs
+
+---
+
+### ⚔️ Simple Rule
+
+notes → methodology → tools → labs → payloads
+
+---
+
 ## 🛠️ Lab Environment Setup (Detailed)
 
 ### Required Tools
