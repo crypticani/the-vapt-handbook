@@ -34,6 +34,42 @@ Input tracing checklist:
 
 ---
 
+## 🔴 Modern Target Profiling Loop
+
+Use this loop before you think about vulnerability classes.
+
+```text
+Map client -> map API -> map auth -> map objects -> map downstream trust
+```
+
+Work through these questions:
+
+1. Client model
+   - Is it server-rendered, SPA, mobile backend, or mixed?
+2. API style
+   - REST, GraphQL, WebSocket, webhook, upload service?
+3. Auth model
+   - cookie, JWT, OAuth/OIDC, API key, service token?
+4. Object model
+   - users, tenants, projects, baskets, invoices, files, webhooks?
+5. Data layer
+   - ORM, raw SQL, search backend, cache, queue, object storage?
+6. Trust edges
+   - internal APIs, callback fetchers, PDF generators, cloud metadata, third-party integrations?
+
+### Modern Prioritization Order
+
+Start with these before lower-value edge cases:
+
+- authentication and token issuance
+- object fetch and object update endpoints
+- role- or tenant-sensitive actions
+- file upload and signed URL flows
+- webhook and callback configuration
+- search, sort, filter, export, and bulk actions
+
+---
+
 ## 🔴 Pre-Engagement Workflow
 
 ```
@@ -231,6 +267,23 @@ echo "DVWA:       $(curl -s -o /dev/null -w '%{http_code}' http://localhost 2>/d
 - Response sizes identify anomalies.
 - Entry points become your test queue.
 
+### Step 0: Architecture Snapshot
+
+Before tooling output, create a one-screen target map:
+
+```markdown
+# Architecture Snapshot
+
+- Client: SPA / mobile / server-rendered / mixed
+- Auth: cookie / JWT / OAuth / API key
+- API style: REST / GraphQL / WebSocket / webhook
+- Data objects: users, orgs, baskets, files, invoices, webhooks
+- Storage: database / cache / object storage
+- Downstream calls: email, PDFs, third-party APIs, cloud metadata, queues
+```
+
+This becomes the lens for the rest of profiling.
+
 ### Step 1: Technology Fingerprinting
 
 ```bash
@@ -335,6 +388,23 @@ done
 >   ...
 > ```
 > **Action items**: Check `/ftp` (might expose files) and `robots.txt` (reveals hidden paths).
+
+### Step 4: Map Authorization Boundaries
+
+For each sensitive endpoint, write down:
+
+- what object is being accessed?
+- what role or tenant should be allowed?
+- what request field identifies the object?
+- is the object identifier user-controlled?
+- does the response expose more fields than the UI shows?
+
+Authorization failures in modern apps usually appear as:
+
+- object-level access to someone else's record
+- function-level access to an admin action
+- property-level access to fields the UI hides
+- mass assignment by sending writable JSON fields the UI never exposes
 
 ---
 

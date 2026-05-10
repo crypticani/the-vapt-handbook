@@ -34,6 +34,28 @@ Input tracing checklist:
 
 ---
 
+## 🔴 Modern Tooling Goals
+
+In modern app testing, tools are used to answer architecture questions, not just to fire payloads.
+
+Use your tooling to identify:
+
+- how the SPA talks to the API
+- where tokens are stored and replayed
+- what object identifiers drive authorization
+- what hidden fields exist in JSON requests and responses
+- whether uploads, callbacks, or signed URLs cross trust boundaries
+
+### Fast Mapping Checklist
+
+- Burp: full request/response capture, hidden API routes, response deltas
+- Browser DevTools: local storage, service workers, frontend route logic, GraphQL calls
+- `curl`: exact reproduction of API requests without browser noise
+- `ffuf`: hidden paths, backup routes, undocumented endpoints
+- Nmap: non-web services and exposed admin surfaces
+
+---
+
 ## 🔴 Burp Suite (Your Primary Weapon)
 
 Burp is the main loop: capture request, send to Repeater, change input, compare response.
@@ -137,6 +159,21 @@ Payload: Numbers 1-100
 > ```
 > Different response lengths at `200` status = different user profiles being returned. Each one is an IDOR find.
 
+#### Workflow 5: Modern JSON Diffing
+
+```
+1. Send a JSON request to Repeater
+2. Save a baseline response
+3. Add one hidden field:
+   - role
+   - isAdmin
+   - tenantId
+   - userId
+   - status
+4. Compare response body, token claims, and object ownership
+5. If accepted, you may have mass assignment or weak authorization
+```
+
 ---
 
 ## 🔴 curl (Command-Line HTTP Client)
@@ -177,6 +214,18 @@ curl -b "session=abc123; role=admin" http://localhost:3000
 
 # POST with form data
 curl -X POST -d "username=admin&password=test" http://localhost/login.php
+
+# PUT JSON body to test over-posting / mass assignment
+curl -X PUT http://localhost:3000/api/profile \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{"displayName":"test","role":"admin"}'
+
+# Reproduce a callback or webhook update
+curl -X POST http://localhost:3000/api/webhooks \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{"url":"http://127.0.0.1:8081/hook","event":"order.created"}'
 
 # Upload a file
 curl -X POST -F "file=@shell.php" http://target.com/upload
@@ -345,6 +394,15 @@ Network      → Watch live HTTP requests/responses (alternative to Burp for qui
 Application  → View cookies, localStorage, sessionStorage, service workers
 Elements     → Inspect/modify HTML in real-time
 Sources      → Read JavaScript source code, set breakpoints
+```
+
+### Modern Uses
+
+```
+Network      → identify API versions, GraphQL operations, pre-signed URL flows
+Application  → inspect JWTs, refresh tokens, feature flags, cached objects
+Sources      → find hidden routes, role checks, enum values, object schemas
+Console      → inspect framework globals and client-side validation assumptions
 ```
 
 #### 🧪 Try It Now — Explore Juice Shop in DevTools

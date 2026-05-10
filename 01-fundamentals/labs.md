@@ -26,11 +26,12 @@ Input tracing checklist:
 
 ## Quick Mode
 
+- Lab 0: map the architecture.
 - Lab 1: learn request capture.
-- Lab 2: map inputs.
+- Lab 2: map inputs and objects.
 - Lab 3: replay payloads.
 - Lab 4: read responses.
-- Lab 5: inspect tokens.
+- Lab 5: inspect tokens and auth boundaries.
 - Lab 6: compare defenses.
 - Lab 7: automate checks.
 
@@ -89,6 +90,63 @@ echo "DVWA:       $(curl -s -o /dev/null -w '%{http_code}' http://localhost)"
 > - HTTPS sites show certificate errors → You need to install the Burp CA certificate (step 6-7 above)
 > - No requests in HTTP history → Make sure Intercept is OFF (we want to passively record, not block)
 > - **Can't install Burp CA cert** → This is the #1 beginner blocker. On Firefox: go to `about:preferences#privacy`, scroll to "Certificates", click "View Certificates", click "Import", select the `cacert.der` file you downloaded
+
+---
+
+## 🧪 Lab 0: Build A Modern Architecture Snapshot
+
+### Objective
+
+Map the target as a modern application, not just as a set of pages.
+
+> 💡 **Why This Matters**
+> Most real targets fail at boundaries between components: browser and API, API and ORM, app and storage, app and cloud, app and webhook worker. If you start with only "what page is this?", you will miss the higher-value bugs.
+
+### Steps
+
+**Step 1: Capture the main app load**
+1. Open Juice Shop through Burp with intercept OFF.
+2. Browse the home page, login page, product search, basket, and feedback flow.
+3. In Burp HTTP History, group requests by path prefix:
+   - `/`
+   - `/rest/`
+   - `/api/`
+   - assets and static files
+
+**Step 2: Fill out this snapshot**
+
+```markdown
+# Architecture Snapshot — Juice Shop
+
+- Client type:
+- API style:
+- Auth material observed:
+- Sensitive objects:
+- Storage or downstream clues:
+- Likely trust boundaries:
+```
+
+**Step 3: Answer with evidence**
+
+Use observed requests and responses to fill it in:
+
+- Client type: SPA
+- API style: REST + API endpoints
+- Auth material observed: JWT
+- Sensitive objects: users, baskets, feedback, products
+- Storage clues: Sequelize and SQLite errors
+- Trust boundaries: browser -> API -> ORM -> database
+
+> ✅ **Expected Output**
+> A short architecture map that tells you what kinds of bugs should be highest priority before you send a single exploit payload.
+
+### Success Criteria
+
+- [ ] You identified the client model
+- [ ] You identified the API shape
+- [ ] You identified where auth material appears
+- [ ] You identified at least three sensitive object types
+- [ ] You wrote at least one likely downstream trust boundary
 
 ---
 
@@ -193,7 +251,7 @@ Content-Type: application/json
 ## 🧪 Lab 2: Map ALL Input Points in a Web Application
 
 ### Objective
-Systematically identify every input point in Juice Shop. Real pentests start here.
+Systematically identify every input point and sensitive object in Juice Shop. Real pentests start here.
 
 > 💡 **Why This Matters**
 > You can't hack what you don't know exists. Mapping the full attack surface BEFORE hacking ensures you don't miss the one vulnerable endpoint everyone else overlooked. This is what separates script kiddies from pentesters.

@@ -34,6 +34,90 @@ Input tracing checklist:
 
 ---
 
+## 🔴 Modern App First
+
+Most current targets are not simple "browser talks directly to PHP page" applications.
+
+The common pattern now looks more like this:
+
+```text
+Browser / Mobile Client
+        ↓
+SPA Frontend or Native App
+        ↓
+API Gateway / Backend For Frontend
+        ↓
+Auth Service / Session Layer
+        ↓
+Application API / Microservices
+        ↓
+ORM / Query Builder / Cache / Queue
+        ↓
+Database / Object Storage / Internal APIs / Cloud Services
+```
+
+That changes what you test first:
+
+- JSON bodies instead of only form posts
+- object IDs and role fields instead of only login fields
+- token handling instead of only cookies
+- webhook URLs and pre-signed uploads instead of only file extensions
+- object, function, and property authorization instead of only page access
+
+### Practical Mental Model
+
+For every target, answer these before payload selection:
+
+1. What is the client: SPA, mobile app, server-rendered app, or mixed?
+2. What is the API style: REST, GraphQL, WebSocket, webhook, or hybrid?
+3. Where does identity live: cookie, JWT, OAuth token, session, API key?
+4. What data layer is likely used: ORM, raw SQL, search engine, cache?
+5. What downstream systems does the app call: storage, queues, third-party APIs, cloud metadata?
+
+### Modern Risk Patterns
+
+| Layer | Common Modern Risk |
+|------|---------------------|
+| SPA / Mobile client | hidden endpoints, role flags, debug features |
+| API gateway | auth inconsistency, path confusion, rate-limit gaps |
+| Serializer / ORM | mass assignment, field exposure, unsafe raw query fallback |
+| Object storage | public objects, weak pre-signed URL handling |
+| Webhooks / callbacks | SSRF, signature bypass, replay |
+| Async workers | validation mismatch, stale authorization, trust abuse |
+
+---
+
+## 🔴 Architecture Mapping Before Payloads
+
+Before trying SQLi or XSS, map the route the data actually takes.
+
+```text
+Input
+  -> transport
+  -> auth check
+  -> validation
+  -> business logic
+  -> persistence
+  -> downstream call
+  -> response or async side effect
+```
+
+Examples:
+
+- Search box -> `/api/search` -> ORM query builder -> database
+- Avatar upload -> signed URL endpoint -> object storage -> async image processor
+- Invite form -> API -> queue -> email worker -> callback link
+- "Connect webhook" feature -> API -> outbound HTTP client -> remote callback
+
+If you know the path, you choose better tests:
+
+- ORM path -> filter/sort injection, raw query fallback, mass assignment
+- serializer path -> field exposure, over-posting, property auth
+- storage path -> path/key control, public read, file processing
+- outbound HTTP path -> SSRF, header confusion, internal reachability
+
+---
+
 ## 🔴 HTTP Deep Dive
 
 ### The Request Lifecycle (Attacker's View)

